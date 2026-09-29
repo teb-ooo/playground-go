@@ -1,6 +1,6 @@
 // Package spa serves an embedded single-page app: it serves files from an
 // fs.FS, falls back to index.html for unknown paths, and injects
-// window.__FACTORY__ (app_name, env, agent_url, claude_session_url, locale,
+// window.__FACTORY__ (app_name, env, claude_session_url, locale,
 // timezone, assistant) so the frontend knows where it runs. The statement is
 // served at /factory.js and index.html loads it with a classic script tag in
 // <head>: the site's Content-Security-Policy (script-src 'self') blocks inline
@@ -25,16 +25,10 @@ const DefaultSessionURLFile = "/app/.factory/session_url"
 // FactoryJSPath is where the window.__FACTORY__ statement is served.
 const FactoryJSPath = "/factory.js"
 
-// AgentPath is the staging-only path of the agent terminal.
-const AgentPath = "/_agent/tty/"
-
 // Config is the data injected as window.__FACTORY__.
 type Config struct {
 	AppName string
 	Env     string
-	// AgentURL overrides the derived value (AgentPath on staging, empty on
-	// production).
-	AgentURL *string
 	// Assistant tells the frontend the end-user assistant is enabled (the
 	// command palette shows "Ask assistant..." only then). Default false.
 	Assistant bool
@@ -85,19 +79,12 @@ type handler struct {
 }
 
 func (h *handler) factoryScript() []byte {
-	agent := ""
-	if h.cfg.Env != "production" && h.cfg.Env != "" {
-		agent = AgentPath
-	}
-	if h.cfg.AgentURL != nil {
-		agent = *h.cfg.AgentURL
-	}
 	session := ""
 	if b, err := os.ReadFile(h.cfg.SessionURLFile); err == nil {
 		session = strings.TrimSpace(string(b))
 	}
 	data, _ := json.Marshal(map[string]any{
-		"app_name": h.cfg.AppName, "env": h.cfg.Env, "agent_url": agent, "claude_session_url": session,
+		"app_name": h.cfg.AppName, "env": h.cfg.Env, "claude_session_url": session,
 		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "assistant": h.cfg.Assistant,
 	})
 	return append(append([]byte("window.__FACTORY__ = "), data...), ';')

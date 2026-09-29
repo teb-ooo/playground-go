@@ -51,7 +51,7 @@ Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth
 | `log` | slog JSON to stdout, request middleware, redaction of `*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD` values. |
 | `assistant` | The end-user assistant: tool-use loop over the app's own API as the signed-in user, SSE replies, `Store` interface with `PgxStore` and `MemoryStore`. Migration SQL in `assistant/migrations/`. |
 | `mail` | Resend and Postmark over HTTP, staging redirect to `MAIL_STAGING_SINK`, text and HTML templates on the base layout copied from `@teb-ooo/ui`. |
-| `spa` | Serves an embedded `fs.FS`, falls back to `index.html`, injects `window.__FACTORY__` (`app_name`, `env`, `agent_url`, `claude_session_url`, `locale`, `timezone`, `assistant`). `assistant` is a boolean from `spa.Config.Assistant` (`FACTORY_ASSISTANT=true`, default false; use `cfg.SPA()`). |
+| `spa` | Serves an embedded `fs.FS`, falls back to `index.html`, serves `window.__FACTORY__` at `/factory.js` (a script tag in index.html; the CSP forbids inline scripts) (`app_name`, `env`, `claude_session_url`, `locale`, `timezone`, `assistant`). `assistant` is a boolean from `spa.Config.Assistant` (`FACTORY_ASSISTANT=true`, default false; use `cfg.SPA()`). |
 | `testkit` | Minted session cookies and Kratos sessions for staging and tests. |
 
 ### Error shape

@@ -41,7 +41,7 @@ func TestServing(t *testing.T) {
 		cache        string
 	}{
 		{"root gets index with config", "GET", "/", 200, []string{"<title>t</title>", `<script src="/factory.js"></script>`}, []string{"window.__FACTORY__"}, "no-store"},
-		{"factory.js carries the config", "GET", "/factory.js", 200, []string{"window.__FACTORY__ = ", `"app_name":"hello"`, `"env":"staging"`, `"agent_url":"/_agent/tty/"`, `"claude_session_url":"https://claude.ai/code/session_abc"`}, []string{"<script"}, "no-store"},
+		{"factory.js carries the config", "GET", "/factory.js", 200, []string{"window.__FACTORY__ = ", `"app_name":"hello"`, `"env":"staging"`, `"claude_session_url":"https://claude.ai/code/session_abc"`}, []string{"<script"}, "no-store"},
 		{"config script is inside head", "GET", "/", 200, []string{`<script src="/factory.js"></script></head>`}, nil, ""},
 		{"unknown route falls back", "GET", "/items/42", 200, []string{`<script src="/factory.js">`, "<body>app</body>"}, nil, "no-store"},
 		{"asset served", "GET", "/assets/app.js", 200, []string{"console.log(1)"}, []string{"__FACTORY__"}, "public, max-age=31536000, immutable"},
@@ -108,10 +108,10 @@ func TestLocaleAndTimezone(t *testing.T) {
 	}
 }
 
-func TestProductionHasNoAgent(t *testing.T) {
-	h := spa.Handler(site, spa.Config{AppName: "hello", Env: "production", SessionURLFile: "/nonexistent/file"})
+func TestNoAgentTerminalConfig(t *testing.T) {
+	h := spa.Handler(site, spa.Config{AppName: "hello", Env: "staging", SessionURLFile: "/nonexistent/file"})
 	body := get(h, "GET", "/factory.js").Body.String()
-	if !strings.Contains(body, `"agent_url":""`) || !strings.Contains(body, `"claude_session_url":""`) {
+	if strings.Contains(body, "agent_url") || !strings.Contains(body, `"claude_session_url":""`) {
 		t.Errorf("body = %s", body)
 	}
 }
