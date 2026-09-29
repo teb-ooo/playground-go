@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"text/template"
 )
 
@@ -85,6 +86,50 @@ func TestEmbeddedCopiesMatchUIPackage(t *testing.T) {
 		}
 		if !bytes.Equal(want, got) {
 			t.Errorf("mail/templates/%s differs from %s: copy it over byte for byte", name, filepath.Join(dir, name))
+		}
+	}
+}
+
+// The dark-mode override lives in a <style> block; html/template must pass it
+// through untouched, and the layout uses exactly two type sizes.
+func TestRenderedHTMLKeepsDarkModeAndTypeScale(t *testing.T) {
+	app := fstest.MapFS{
+		"x.html.tmpl": {Data: []byte(`{{define "content"}}<p>Hi {{.Data.Name}}</p>{{end}}`)},
+		"x.txt.tmpl":  {Data: []byte(`{{define "content"}}Hi {{.Data.Name}}{{end}}`)},
+	}
+	tpl, err := NewTemplates(app, "teb.ooo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := tpl.Render("x", Page{Title: "T <&>", Preheader: "pre", Footer: "foot", Data: map[string]string{"Name": "<Ada>"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := baseFS.ReadFile("templates/base.html.tmpl")
+	style := regexp.MustCompile(`(?s)<style>.*?</style>`).Find(raw)
+	if len(style) == 0 || !bytes.Contains(style, []byte("@media (prefers-color-scheme: dark)")) {
+		t.Fatal("base has no dark-mode style block")
+	}
+	if !strings.Contains(r.HTML, string(style)) {
+		t.Errorf("html/template altered the <style> block:\n%s", r.HTML)
+	}
+	for _, want := range []string{"!important", "&lt;Ada&gt;", "T &lt;&amp;&gt;", "pre", "foot"} {
+		if !strings.Contains(r.HTML, want) {
+			t.Errorf("html lacks %q", want)
+		}
+	}
+	sizes := map[string]bool{}
+	for _, m := range regexp.MustCompile(`font-size:\s*(\d+)px`).FindAllStringSubmatch(r.HTML, -1) {
+		if m[1] != "1" { // the hidden preheader is 1px on purpose
+			sizes[m[1]] = true
+		}
+	}
+	if len(sizes) != 2 || !sizes["14"] || !sizes["32"] {
+		t.Errorf("type sizes = %v, want exactly 14px and 32px (ignoring the 1px hidden preheader)", sizes)
+	}
+	for _, want := range []string{"teb.ooo", "T <&>", "Hi <Ada>", "foot"} {
+		if !strings.Contains(r.Text, want) {
+			t.Errorf("text lacks %q: %q", want, r.Text)
 		}
 	}
 }
