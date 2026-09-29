@@ -1,0 +1,6 @@
+title = "factory-go gitleaks config"
+[extend]
+useDefault = true
+[allowlist]
+description = "fake values used by the config and redaction tests"
+paths = ['''config_test\.go''', '''log/log_test\.go''']
