@@ -1,8 +1,10 @@
 // Package spa serves an embedded single-page app: it serves files from an
 // fs.FS, falls back to index.html for unknown paths, and injects
 // window.__FACTORY__ (app_name, env, agent_url, claude_session_url, locale,
-// timezone, assistant) into
-// index.html so the frontend knows where it runs.
+// timezone, assistant) so the frontend knows where it runs. The statement is
+// served at /factory.js and index.html loads it with a classic script tag in
+// <head>: the site's Content-Security-Policy (script-src 'self') blocks inline
+// scripts, so it cannot be injected inline.
 package spa
 
 import (
@@ -19,6 +21,9 @@ import (
 // DefaultSessionURLFile is where the s6 claude service writes the Claude app
 // session URL.
 const DefaultSessionURLFile = "/app/.factory/session_url"
+
+// FactoryJSPath is where the window.__FACTORY__ statement is served.
+const FactoryJSPath = "/factory.js"
 
 // AgentPath is the staging-only path of the agent terminal.
 const AgentPath = "/_agent/tty/"
@@ -91,13 +96,15 @@ func (h *handler) factoryScript() []byte {
 	if b, err := os.ReadFile(h.cfg.SessionURLFile); err == nil {
 		session = strings.TrimSpace(string(b))
 	}
-	// json.Marshal escapes <, > and & so the value cannot break out of the script element.
 	data, _ := json.Marshal(map[string]any{
 		"app_name": h.cfg.AppName, "env": h.cfg.Env, "agent_url": agent, "claude_session_url": session,
 		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "assistant": h.cfg.Assistant,
 	})
-	return append(append([]byte("<script>window.__FACTORY__ = "), data...), []byte(";</script>")...)
+	return append(append([]byte("window.__FACTORY__ = "), data...), ';')
 }
+
+// scriptTag is what index.html gets: a same-origin classic script, allowed by script-src 'self'.
+var scriptTag = []byte(`<script src="` + FactoryJSPath + `"></script>`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -108,6 +115,15 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 	if name == "" {
 		name = "index.html"
+	}
+	if "/"+name == FactoryJSPath {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(h.factoryScript())
+		}
+		return
 	}
 
 	if name != "index.html" {
@@ -151,7 +167,7 @@ func (h *handler) serveIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "index.html not found in the embedded frontend", http.StatusInternalServerError)
 		return
 	}
-	script := h.factoryScript()
+	script := scriptTag
 	if i := bytes.Index(bytes.ToLower(idx), []byte("</head>")); i >= 0 {
 		idx = append(idx[:i:i], append(script, idx[i:]...)...)
 	} else {

@@ -40,15 +40,16 @@ func TestServing(t *testing.T) {
 		notContain   []string
 		cache        string
 	}{
-		{"root gets index with config", "GET", "/", 200, []string{"<title>t</title>", "window.__FACTORY__", `"app_name":"hello"`, `"env":"staging"`, `"agent_url":"/_agent/tty/"`, `"claude_session_url":"https://claude.ai/code/session_abc"`}, nil, "no-store"},
-		{"config is inside head", "GET", "/", 200, []string{"</script></head>"}, nil, ""},
-		{"unknown route falls back", "GET", "/items/42", 200, []string{"window.__FACTORY__", "<body>app</body>"}, nil, "no-store"},
+		{"root gets index with config", "GET", "/", 200, []string{"<title>t</title>", `<script src="/factory.js"></script>`}, []string{"window.__FACTORY__"}, "no-store"},
+		{"factory.js carries the config", "GET", "/factory.js", 200, []string{"window.__FACTORY__ = ", `"app_name":"hello"`, `"env":"staging"`, `"agent_url":"/_agent/tty/"`, `"claude_session_url":"https://claude.ai/code/session_abc"`}, []string{"<script"}, "no-store"},
+		{"config script is inside head", "GET", "/", 200, []string{`<script src="/factory.js"></script></head>`}, nil, ""},
+		{"unknown route falls back", "GET", "/items/42", 200, []string{`<script src="/factory.js">`, "<body>app</body>"}, nil, "no-store"},
 		{"asset served", "GET", "/assets/app.js", 200, []string{"console.log(1)"}, []string{"__FACTORY__"}, "public, max-age=31536000, immutable"},
 		{"root file served", "GET", "/favicon.svg", 200, []string{"<svg/>"}, nil, ""},
 		{"missing asset is 404", "GET", "/assets/missing.js", 404, nil, nil, ""},
 		{"api path is 404", "GET", "/api/nothing", 404, nil, nil, ""},
-		{"directory falls back", "GET", "/docs", 200, []string{"window.__FACTORY__"}, nil, ""},
-		{"traversal is cleaned to a client route", "GET", "/../../etc/passwd", 200, []string{"window.__FACTORY__"}, []string{"root:"}, ""},
+		{"directory falls back", "GET", "/docs", 200, []string{"/factory.js"}, nil, ""},
+		{"traversal is cleaned to a client route", "GET", "/../../etc/passwd", 200, []string{"/factory.js"}, []string{"root:"}, ""},
 		{"HEAD has no body", "HEAD", "/", 200, nil, []string{"<title>"}, ""},
 		{"POST not allowed", "POST", "/", 405, nil, nil, ""},
 	}
@@ -97,7 +98,7 @@ func TestLocaleAndTimezone(t *testing.T) {
 				t.Setenv(k, v)
 			}
 			tc.cfg.SessionURLFile = "/nonexistent"
-			body := get(spa.Handler(site, tc.cfg), "GET", "/").Body.String()
+			body := get(spa.Handler(site, tc.cfg), "GET", "/factory.js").Body.String()
 			for _, want := range []string{`"locale":"` + tc.wantLocale + `"`, `"timezone":"` + tc.wantTZ + `"`} {
 				if !strings.Contains(body, want) {
 					t.Errorf("body missing %s: %s", want, body)
@@ -109,7 +110,7 @@ func TestLocaleAndTimezone(t *testing.T) {
 
 func TestProductionHasNoAgent(t *testing.T) {
 	h := spa.Handler(site, spa.Config{AppName: "hello", Env: "production", SessionURLFile: "/nonexistent/file"})
-	body := get(h, "GET", "/").Body.String()
+	body := get(h, "GET", "/factory.js").Body.String()
 	if !strings.Contains(body, `"agent_url":""`) || !strings.Contains(body, `"claude_session_url":""`) {
 		t.Errorf("body = %s", body)
 	}
@@ -119,11 +120,11 @@ func TestEnvDefaultsAndEscaping(t *testing.T) {
 	t.Setenv("APP_NAME", `</script><b>&`)
 	t.Setenv("APP_ENV", "production")
 	h := spa.Handler(site, spa.Config{SessionURLFile: "/nonexistent"})
-	body := get(h, "GET", "/").Body.String()
+	body := get(h, "GET", "/factory.js").Body.String()
 	if strings.Contains(body, "</script><b>") {
-		t.Fatalf("app name broke out of the script element: %s", body)
+		t.Fatalf("app name is not escaped: %s", body)
 	}
-	re := regexp.MustCompile(`window\.__FACTORY__ = (\{.*\});</script>`)
+	re := regexp.MustCompile(`^window\.__FACTORY__ = (\{.*\});$`)
 	if !re.MatchString(body) {
 		t.Fatalf("no config: %s", body)
 	}
@@ -132,7 +133,7 @@ func TestEnvDefaultsAndEscaping(t *testing.T) {
 func TestIndexWithoutHead(t *testing.T) {
 	h := spa.Handler(fstest.MapFS{"index.html": {Data: []byte("<div>bare</div>")}}, spa.Config{AppName: "x", Env: "staging", SessionURLFile: "/nonexistent"})
 	body := get(h, "GET", "/").Body.String()
-	if !strings.HasPrefix(body, "<script>window.__FACTORY__") || !strings.HasSuffix(body, "<div>bare</div>") {
+	if !strings.HasPrefix(body, `<script src="/factory.js"></script>`) || !strings.HasSuffix(body, "<div>bare</div>") {
 		t.Errorf("body = %s", body)
 	}
 }
@@ -153,7 +154,7 @@ func TestAssistantFlag(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			h := spa.Handler(site, spa.Config{Assistant: tc.on, SessionURLFile: "/nonexistent"})
-			if body := get(h, "GET", "/").Body.String(); !strings.Contains(body, tc.want) {
+			if body := get(h, "GET", "/factory.js").Body.String(); !strings.Contains(body, tc.want) {
 				t.Errorf("body missing %s: %s", tc.want, body)
 			}
 		})
