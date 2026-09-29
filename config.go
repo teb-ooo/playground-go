@@ -18,6 +18,7 @@ import (
 	"github.com/teb-ooo/factory-go/assistant"
 	"github.com/teb-ooo/factory-go/auth"
 	"github.com/teb-ooo/factory-go/mail"
+	"github.com/teb-ooo/factory-go/spa"
 )
 
 // Environments.
@@ -54,6 +55,9 @@ type Config struct {
 	AssistantModel string
 	// AnthropicAPIKey is ANTHROPIC_API_KEY; empty means the assistant is off.
 	AnthropicAPIKey string
+	// Assistant is FACTORY_ASSISTANT (true|false, default false): whether the
+	// frontend offers the assistant. Independent of AnthropicAPIKey.
+	Assistant bool
 	// Version is the build version. Not read from the environment: set it from
 	// an -ldflags variable.
 	Version string
@@ -91,6 +95,13 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 
 	var errs []error
+	if raw := strings.ToLower(get("FACTORY_ASSISTANT")); raw != "" {
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			errs = append(errs, errors.New("FACTORY_ASSISTANT must be true or false"))
+		}
+		c.Assistant = b
+	}
 	if raw := get("SESSION_KEY"); raw == "" {
 		errs = append(errs, errors.New("SESSION_KEY is required"))
 	} else if k, err := auth.ParseKey(raw); err != nil {
@@ -197,6 +208,12 @@ func (c Config) Addr() string { return ":" + c.Port }
 
 // AssistantEnabled reports whether an Anthropic API key is configured.
 func (c Config) AssistantEnabled() bool { return c.AnthropicAPIKey != "" }
+
+// SPA returns the spa.Config for this app: name, environment and the assistant
+// flag. Locale and timezone come from FACTORY_LOCALE and FACTORY_TIMEZONE.
+func (c Config) SPA() spa.Config {
+	return spa.Config{AppName: c.AppName, Env: c.Env, Assistant: c.Assistant}
+}
 
 // NewAuth builds the auth package's Auth from the config.
 func (c Config) NewAuth(opts ...auth.Option) (*auth.Auth, error) {

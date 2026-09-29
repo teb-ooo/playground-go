@@ -156,3 +156,24 @@ func TestLogValueRedactsSecrets(t *testing.T) {
 		t.Errorf("log = %s", out)
 	}
 }
+
+func TestFactoryAssistantFlag(t *testing.T) {
+	tests := []struct {
+		val     string
+		want    bool
+		wantErr bool
+	}{{"", false, false}, {"true", true, false}, {"TRUE", true, false}, {"false", false, false}, {"1", true, false}, {"yes", false, true}}
+	for _, tc := range tests {
+		t.Run(tc.val, func(t *testing.T) {
+			c, err := factory.FromEnv(env(map[string]string{"FACTORY_ASSISTANT": tc.val}))
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v", err)
+			}
+			if err == nil {
+				if c.Assistant != tc.want || c.SPA().Assistant != tc.want || c.SPA().AppName != "hello" || c.SPA().Env != "staging" {
+					t.Errorf("config = %+v spa = %+v", c.Assistant, c.SPA())
+				}
+			}
+		})
+	}
+}

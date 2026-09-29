@@ -1,7 +1,7 @@
 // Package spa serves an embedded single-page app: it serves files from an
 // fs.FS, falls back to index.html for unknown paths, and injects
 // window.__FACTORY__ (app_name, env, agent_url, claude_session_url, locale,
-// timezone) into
+// timezone, assistant) into
 // index.html so the frontend knows where it runs.
 package spa
 
@@ -30,6 +30,9 @@ type Config struct {
 	// AgentURL overrides the derived value (AgentPath on staging, empty on
 	// production).
 	AgentURL *string
+	// Assistant tells the frontend the end-user assistant is enabled (the
+	// command palette shows "Ask assistant..." only then). Default false.
+	Assistant bool
 	// Locale is FACTORY_LOCALE (default en-US) and Timezone FACTORY_TIMEZONE
 	// (default UTC); the web package's fmt helpers format with them.
 	Locale   string
@@ -89,9 +92,9 @@ func (h *handler) factoryScript() []byte {
 		session = strings.TrimSpace(string(b))
 	}
 	// json.Marshal escapes <, > and & so the value cannot break out of the script element.
-	data, _ := json.Marshal(map[string]string{
+	data, _ := json.Marshal(map[string]any{
 		"app_name": h.cfg.AppName, "env": h.cfg.Env, "agent_url": agent, "claude_session_url": session,
-		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone,
+		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "assistant": h.cfg.Assistant,
 	})
 	return append(append([]byte("<script>window.__FACTORY__ = "), data...), []byte(";</script>")...)
 }

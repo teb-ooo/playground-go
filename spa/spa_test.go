@@ -143,3 +143,19 @@ func TestMissingIndex(t *testing.T) {
 		t.Errorf("code = %d", w.Code)
 	}
 }
+
+func TestAssistantFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		on   bool
+		want string
+	}{{"default off", false, `"assistant":false`}, {"on", true, `"assistant":true`}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := spa.Handler(site, spa.Config{Assistant: tc.on, SessionURLFile: "/nonexistent"})
+			if body := get(h, "GET", "/").Body.String(); !strings.Contains(body, tc.want) {
+				t.Errorf("body missing %s: %s", tc.want, body)
+			}
+		})
+	}
+}
