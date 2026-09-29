@@ -95,7 +95,8 @@ func TestWholeStack(t *testing.T) {
 		{"me anonymous", "/auth/me", nil, 401, ""},
 		{"me admin", "/auth/me", admin, 200, `"is_admin":true`},
 		{"healthz", "/healthz", nil, 200, `"db":"ok"`},
-		{"spa fallback", "/some/route", nil, 200, "window.__FACTORY__"},
+		{"spa fallback", "/some/route", nil, 200, `<script src="/factory.js">`},
+		{"factory.js", "/factory.js", nil, 200, "window.__FACTORY__"},
 		{"assistant needs login", "/api/assistant/conversations", nil, 401, ""},
 		{"assistant list", "/api/assistant/conversations", admin, 200, "[]"},
 	}
