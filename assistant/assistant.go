@@ -102,7 +102,7 @@ func New(api huma.API, app http.Handler, opts Options) (*Assistant, error) {
 		return nil, errors.New("assistant: Options.Store is required")
 	}
 	if opts.APIKey == "" {
-		return nil, errors.New("assistant: Options.APIKey (ANTHROPIC_API_KEY) is required")
+		return nil, errors.New("assistant: no Anthropic API key configured for this app (ANTHROPIC_API_KEY is empty; set it per app with `factory secrets set <app> ANTHROPIC_API_KEY`)")
 	}
 	if opts.Model == "" {
 		opts.Model = DefaultModel

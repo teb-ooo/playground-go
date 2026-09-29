@@ -771,3 +771,15 @@ func sameKeys(a, b []string) bool {
 	}
 	return true
 }
+
+func TestNewWithoutAPIKeyExplainsWhat(t *testing.T) {
+	_, err := assistant.New(nil, http.NewServeMux(), assistant.Options{AppName: "hello", Store: assistant.NewMemoryStore()})
+	if err == nil {
+		t.Fatal("an empty API key must be an error")
+	}
+	for _, want := range []string{"no Anthropic API key configured", "ANTHROPIC_API_KEY", "factory secrets set"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+}
