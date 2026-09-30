@@ -60,7 +60,7 @@ The one error shape is Huma's default RFC 9457 `application/problem+json`: `titl
 
 ### openapimcp input schema
 
-A tool's input is one JSON object. Path and query parameters are top-level properties; the request body is nested under `body`, except that a body that is the operation's only input (no path or query parameters) and an object is flattened to the top level. A parameter named `body` is an error at construction. Component schemas are made self-contained under `$defs`; header and cookie parameters are not exposed. Operations registered with `Hidden: true` are omitted from the OpenAPI document by Huma and therefore are not tools. The choice is documented in the package comment and in `docs/adr/0020`.
+A tool's input is one JSON object. Path and query parameters are top-level properties; the request body is nested under `body`, except that a body that is the operation's only input (no path or query parameters) and an object is flattened to the top level. A parameter named `body` is an error at construction. Component schemas are made self-contained under `$defs`; header and cookie parameters are not exposed. Operations registered with `Hidden: true` are omitted from the OpenAPI document by Huma and therefore are not tools. The choice is documented in the package comment and in `brain/docs/decisions/0020-openapimcp-dispatch-and-auth.md`.
 
 ### Assistant events
 
@@ -72,4 +72,4 @@ Every cookie playground-go sets is `Secure; HttpOnly; SameSite=Lax` and host-onl
 
 ### Decisions
 
-Choices the document leaves open are in `/srv/playground/docs/adr/0020` to `0024`.
+Choices the document leaves open are in `/srv/playground/brain/docs/decisions/0020` to `0024`.
