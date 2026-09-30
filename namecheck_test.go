@@ -15,8 +15,11 @@ func TestNoOldNameInSources(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && d.Name() == ".git" {
-			return fs.SkipDir
+		if d.Name() == ".git" {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil // a worktree's .git file
 		}
 		if d.IsDir() || p == "namecheck_test.go" {
 			return nil
