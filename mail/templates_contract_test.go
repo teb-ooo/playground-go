@@ -73,7 +73,7 @@ func TestBaseTemplatesRenderWithSampleContent(t *testing.T) {
 func TestEmbeddedCopiesMatchUIPackage(t *testing.T) {
 	dir := os.Getenv("PLAYGROUND_UI_EMAIL_DIR")
 	if dir == "" {
-		t.Skip("PLAYGROUND_UI_EMAIL_DIR not set (point it at lib/ui/email to compare)")
+		t.Skip("PLAYGROUND_UI_EMAIL_DIR not set (point it at lib/ui-lib/email to compare)")
 	}
 	for _, name := range []string{"base.html.tmpl", "base.txt.tmpl"} {
 		want, err := os.ReadFile(filepath.Join(dir, name))
