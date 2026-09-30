@@ -53,7 +53,7 @@ func New(api huma.API, app http.Handler, opts Options) (*Server, error) {
 		}
 	}
 	if name == "" {
-		name = "factory-app"
+		name = "playground-app"
 	}
 	if version == "" {
 		version = "0.0.0"

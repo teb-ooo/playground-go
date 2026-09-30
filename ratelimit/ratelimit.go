@@ -27,7 +27,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/teb-ooo/factory-go/internal/problem"
+	"github.com/teb-ooo/playground-go/internal/problem"
 )
 
 // Defaults: 10 requests per minute, burst 5.

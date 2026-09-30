@@ -12,8 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/teb-ooo/factory-go/assistant"
-	"github.com/teb-ooo/factory-go/internal/uuidv7"
+	"github.com/teb-ooo/playground-go/assistant"
+	"github.com/teb-ooo/playground-go/internal/uuidv7"
 )
 
 func TestMemoryStore(t *testing.T) {
@@ -21,21 +21,21 @@ func TestMemoryStore(t *testing.T) {
 }
 
 // TestPgxStore runs the same suite against Postgres when
-// FACTORY_TEST_DATABASE_URL points at a throwaway database, for example
+// PLAYGROUND_TEST_DATABASE_URL points at a throwaway database, for example
 //
 //	docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=x postgres:17.11
-//	FACTORY_TEST_DATABASE_URL=postgres://postgres:x@127.0.0.1:55432/postgres go test ./assistant
+//	PLAYGROUND_TEST_DATABASE_URL=postgres://postgres:x@127.0.0.1:55432/postgres go test ./assistant
 func TestPgxStore(t *testing.T) {
-	dsn := os.Getenv("FACTORY_TEST_DATABASE_URL")
+	dsn := os.Getenv("PLAYGROUND_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("FACTORY_TEST_DATABASE_URL not set")
+		t.Skip("PLAYGROUND_TEST_DATABASE_URL not set")
 	}
 	storeConformance(t, newPgxStore)
 }
 
 // newPgxStore returns a PgxStore on a fresh schema of the throwaway database.
 func newPgxStore(t *testing.T) assistant.Store {
-	dsn := os.Getenv("FACTORY_TEST_DATABASE_URL")
+	dsn := os.Getenv("PLAYGROUND_TEST_DATABASE_URL")
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, dsn)
 	if err != nil {

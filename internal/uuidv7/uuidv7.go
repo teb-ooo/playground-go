@@ -1,5 +1,5 @@
 // Package uuidv7 generates RFC 9562 version 7 UUIDs, the ID format used by
-// every factory app (BOOTSTRAP section 7).
+// every playground app (BOOTSTRAP section 7).
 package uuidv7
 
 import (

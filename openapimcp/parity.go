@@ -39,7 +39,7 @@ func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(r)
 }
 
-// ParityCheck is the parity test every factory app runs. It asserts that
+// ParityCheck is the parity test every playground app runs. It asserts that
 //
 //	(a) the sorted operation ids of api (Hidden operations are not part of
 //	    the OpenAPI document and so are excluded) equal the sorted tool names

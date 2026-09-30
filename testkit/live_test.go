@@ -9,7 +9,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/teb-ooo/factory-go/testkit"
+	"github.com/teb-ooo/playground-go/testkit"
 )
 
 // Run with: KRATOS_ADMIN=http://127.0.0.1:14434 KRATOS_PUBLIC=http://127.0.0.1:14433 IDENTITY_ID=... go test -tags kratoslive -run Live ./testkit

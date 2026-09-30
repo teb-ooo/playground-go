@@ -24,7 +24,7 @@ type kratosConfig struct {
 
 // WithKratosPublicURL sets the base URL of Kratos's public API. Default: the
 // KRATOS_PUBLIC_URL environment variable, else the admin URL with port 4434
-// replaced by 4433 (the factory's compose layout).
+// replaced by 4433 (the playground's compose layout).
 func WithKratosPublicURL(u string) KratosOption { return func(c *kratosConfig) { c.publicURL = u } }
 
 // WithKratosHTTPClient sets the HTTP client.
@@ -122,7 +122,7 @@ func MintKratosSession(ctx context.Context, kratosAdminURL, identityID string, o
 // browser-type recovery flow and returns the ory_kratos_session cookie Kratos
 // issues (name, value and attributes as Kratos set them), which can be set in
 // agent-browser for the id app's origin. It prefers the admin recovery link
-// (the factory's configuration, recovery.use: link) and falls back to the
+// (the playground's configuration, recovery.use: link) and falls back to the
 // recovery code when the link strategy is not enabled, so it works with either
 // and does not need feature_flags.use_continue_with_transitions.
 func MintKratosSessionCookie(ctx context.Context, kratosAdminURL, identityID string, opts ...KratosOption) (*http.Cookie, error) {

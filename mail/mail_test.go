@@ -12,7 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/teb-ooo/factory-go/mail"
+	"github.com/teb-ooo/playground-go/mail"
 )
 
 type captured struct {
@@ -37,7 +37,7 @@ func fakeProvider(t *testing.T, status int, reply string) (*httptest.Server, *[]
 }
 
 func base(srv *httptest.Server, provider, env string) mail.Config {
-	return mail.Config{Provider: provider, APIKey: "key-123456", AppName: "hello", FactoryDomain: "teb.ooo",
+	return mail.Config{Provider: provider, APIKey: "key-123456", AppName: "hello", PlaygroundDomain: "teb.ooo",
 		Env: env, StagingSink: "sink@example.org", BaseURL: srv.URL}
 }
 
@@ -154,8 +154,8 @@ func TestNewValidation(t *testing.T) {
 		{"no provider", func(c *mail.Config) { c.Provider = "" }, false},
 		{"no key", func(c *mail.Config) { c.APIKey = "" }, false},
 		{"no app", func(c *mail.Config) { c.AppName = "" }, false},
-		{"no domain and no from", func(c *mail.Config) { c.FactoryDomain = "" }, false},
-		{"explicit from", func(c *mail.Config) { c.FactoryDomain = ""; c.From = "Team <t@teb.ooo>" }, true},
+		{"no domain and no from", func(c *mail.Config) { c.PlaygroundDomain = "" }, false},
+		{"explicit from", func(c *mail.Config) { c.PlaygroundDomain = ""; c.From = "Team <t@teb.ooo>" }, true},
 		{"staging needs sink", func(c *mail.Config) { c.StagingSink = "" }, false},
 		{"production does not need sink", func(c *mail.Config) { c.StagingSink = ""; c.Env = "production" }, true},
 		{"bad sink", func(c *mail.Config) { c.StagingSink = "not an address" }, false},

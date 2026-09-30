@@ -13,10 +13,10 @@ import (
 
 // The base layouts are owned by @teb-ooo/ui (its email/ directory) and embedded
 // here as byte-identical copies. These tests fail if a copy stops honouring the
-// placeholder contract, and, when FACTORY_UI_EMAIL_DIR points at the ui
+// placeholder contract, and, when PLAYGROUND_UI_EMAIL_DIR points at the ui
 // package's email/ directory, if the copies diverge from it.
 
-var placeholders = []string{"{{.Title}}", "{{.Preheader}}", "{{.FactoryName}}", "{{.Footer}}", `{{template "content" .}}`}
+var placeholders = []string{"{{.Title}}", "{{.Preheader}}", "{{.PlaygroundName}}", "{{.Footer}}", `{{template "content" .}}`}
 
 func TestBaseTemplatesHonourPlaceholderContract(t *testing.T) {
 	for _, name := range []string{"templates/base.html.tmpl", "templates/base.txt.tmpl"} {
@@ -60,7 +60,7 @@ func TestBaseTemplatesRenderWithSampleContent(t *testing.T) {
 	var buf bytes.Buffer
 	tt := template.Must(template.New("b").ParseFS(baseFS, "templates/base.txt.tmpl"))
 	template.Must(tt.New("c").Parse(`{{define "content"}}BODY{{end}}`))
-	if err := tt.ExecuteTemplate(&buf, "base.txt.tmpl", Page{Title: "T", FactoryName: "F", Footer: "Foot"}); err != nil {
+	if err := tt.ExecuteTemplate(&buf, "base.txt.tmpl", Page{Title: "T", PlaygroundName: "F", Footer: "Foot"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"T", "F", "BODY", "Foot"} {
@@ -71,9 +71,9 @@ func TestBaseTemplatesRenderWithSampleContent(t *testing.T) {
 }
 
 func TestEmbeddedCopiesMatchUIPackage(t *testing.T) {
-	dir := os.Getenv("FACTORY_UI_EMAIL_DIR")
+	dir := os.Getenv("PLAYGROUND_UI_EMAIL_DIR")
 	if dir == "" {
-		t.Skip("FACTORY_UI_EMAIL_DIR not set (point it at lib/ui/email to compare)")
+		t.Skip("PLAYGROUND_UI_EMAIL_DIR not set (point it at lib/ui/email to compare)")
 	}
 	for _, name := range []string{"base.html.tmpl", "base.txt.tmpl"} {
 		want, err := os.ReadFile(filepath.Join(dir, name))

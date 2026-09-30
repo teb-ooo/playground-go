@@ -15,9 +15,9 @@ import (
 
 const (
 	// CookieName is the session cookie.
-	CookieName = "factory_session"
+	CookieName = "playground_session"
 	// LoginCookieName holds the in-flight login state (PKCE verifier, state, nonce).
-	LoginCookieName = "factory_login"
+	LoginCookieName = "playground_login"
 
 	// DefaultSessionTTL is how long a session cookie is valid.
 	DefaultSessionTTL = 24 * time.Hour

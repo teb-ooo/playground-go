@@ -10,7 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/teb-ooo/factory-go/spa"
+	"github.com/teb-ooo/playground-go/spa"
 )
 
 var site = fstest.MapFS{
@@ -40,16 +40,16 @@ func TestServing(t *testing.T) {
 		notContain   []string
 		cache        string
 	}{
-		{"root gets index with config", "GET", "/", 200, []string{"<title>t</title>", `<script src="/factory.js"></script>`}, []string{"window.__FACTORY__"}, "no-store"},
-		{"factory.js carries the config", "GET", "/factory.js", 200, []string{"window.__FACTORY__ = ", `"app_name":"hello"`, `"env":"staging"`, `"claude_session_url":"https://claude.ai/code/session_abc"`}, []string{"<script"}, "no-store"},
-		{"config script is inside head", "GET", "/", 200, []string{`<script src="/factory.js"></script></head>`}, nil, ""},
-		{"unknown route falls back", "GET", "/items/42", 200, []string{`<script src="/factory.js">`, "<body>app</body>"}, nil, "no-store"},
-		{"asset served", "GET", "/assets/app.js", 200, []string{"console.log(1)"}, []string{"__FACTORY__"}, "public, max-age=31536000, immutable"},
+		{"root gets index with config", "GET", "/", 200, []string{"<title>t</title>", `<script src="/playground.js"></script>`}, []string{"window.__PLAYGROUND__"}, "no-store"},
+		{"playground.js carries the config", "GET", "/playground.js", 200, []string{"window.__PLAYGROUND__ = ", `"app_name":"hello"`, `"env":"staging"`, `"claude_session_url":"https://claude.ai/code/session_abc"`}, []string{"<script"}, "no-store"},
+		{"config script is inside head", "GET", "/", 200, []string{`<script src="/playground.js"></script></head>`}, nil, ""},
+		{"unknown route falls back", "GET", "/items/42", 200, []string{`<script src="/playground.js">`, "<body>app</body>"}, nil, "no-store"},
+		{"asset served", "GET", "/assets/app.js", 200, []string{"console.log(1)"}, []string{"__PLAYGROUND__"}, "public, max-age=31536000, immutable"},
 		{"root file served", "GET", "/favicon.svg", 200, []string{"<svg/>"}, nil, ""},
 		{"missing asset is 404", "GET", "/assets/missing.js", 404, nil, nil, ""},
 		{"api path is 404", "GET", "/api/nothing", 404, nil, nil, ""},
-		{"directory falls back", "GET", "/docs", 200, []string{"/factory.js"}, nil, ""},
-		{"traversal is cleaned to a client route", "GET", "/../../etc/passwd", 200, []string{"/factory.js"}, []string{"root:"}, ""},
+		{"directory falls back", "GET", "/docs", 200, []string{"/playground.js"}, nil, ""},
+		{"traversal is cleaned to a client route", "GET", "/../../etc/passwd", 200, []string{"/playground.js"}, []string{"root:"}, ""},
 		{"HEAD has no body", "HEAD", "/", 200, nil, []string{"<title>"}, ""},
 		{"POST not allowed", "POST", "/", 405, nil, nil, ""},
 	}
@@ -86,19 +86,19 @@ func TestLocaleAndTimezone(t *testing.T) {
 		wantTZ     string
 	}{
 		{"defaults", nil, spa.Config{}, "en-US", "UTC"},
-		{"from env", map[string]string{"FACTORY_LOCALE": "sv-SE", "FACTORY_TIMEZONE": "Europe/Stockholm"}, spa.Config{}, "sv-SE", "Europe/Stockholm"},
-		{"config wins", map[string]string{"FACTORY_LOCALE": "sv-SE"}, spa.Config{Locale: "de-DE", Timezone: "Europe/Berlin"}, "de-DE", "Europe/Berlin"},
-		{"blank env is default", map[string]string{"FACTORY_LOCALE": "  ", "FACTORY_TIMEZONE": ""}, spa.Config{}, "en-US", "UTC"},
+		{"from env", map[string]string{"PLAYGROUND_LOCALE": "sv-SE", "PLAYGROUND_TIMEZONE": "Europe/Stockholm"}, spa.Config{}, "sv-SE", "Europe/Stockholm"},
+		{"config wins", map[string]string{"PLAYGROUND_LOCALE": "sv-SE"}, spa.Config{Locale: "de-DE", Timezone: "Europe/Berlin"}, "de-DE", "Europe/Berlin"},
+		{"blank env is default", map[string]string{"PLAYGROUND_LOCALE": "  ", "PLAYGROUND_TIMEZONE": ""}, spa.Config{}, "en-US", "UTC"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("FACTORY_LOCALE", "")
-			t.Setenv("FACTORY_TIMEZONE", "")
+			t.Setenv("PLAYGROUND_LOCALE", "")
+			t.Setenv("PLAYGROUND_TIMEZONE", "")
 			for k, v := range tc.env {
 				t.Setenv(k, v)
 			}
 			tc.cfg.SessionURLFile = "/nonexistent"
-			body := get(spa.Handler(site, tc.cfg), "GET", "/factory.js").Body.String()
+			body := get(spa.Handler(site, tc.cfg), "GET", "/playground.js").Body.String()
 			for _, want := range []string{`"locale":"` + tc.wantLocale + `"`, `"timezone":"` + tc.wantTZ + `"`} {
 				if !strings.Contains(body, want) {
 					t.Errorf("body missing %s: %s", want, body)
@@ -110,7 +110,7 @@ func TestLocaleAndTimezone(t *testing.T) {
 
 func TestNoAgentTerminalConfig(t *testing.T) {
 	h := spa.Handler(site, spa.Config{AppName: "hello", Env: "staging", SessionURLFile: "/nonexistent/file"})
-	body := get(h, "GET", "/factory.js").Body.String()
+	body := get(h, "GET", "/playground.js").Body.String()
 	if strings.Contains(body, "agent_url") || !strings.Contains(body, `"claude_session_url":""`) {
 		t.Errorf("body = %s", body)
 	}
@@ -120,11 +120,11 @@ func TestEnvDefaultsAndEscaping(t *testing.T) {
 	t.Setenv("APP_NAME", `</script><b>&`)
 	t.Setenv("APP_ENV", "production")
 	h := spa.Handler(site, spa.Config{SessionURLFile: "/nonexistent"})
-	body := get(h, "GET", "/factory.js").Body.String()
+	body := get(h, "GET", "/playground.js").Body.String()
 	if strings.Contains(body, "</script><b>") {
 		t.Fatalf("app name is not escaped: %s", body)
 	}
-	re := regexp.MustCompile(`^window\.__FACTORY__ = (\{.*\});$`)
+	re := regexp.MustCompile(`^window\.__PLAYGROUND__ = (\{.*\});$`)
 	if !re.MatchString(body) {
 		t.Fatalf("no config: %s", body)
 	}
@@ -133,7 +133,7 @@ func TestEnvDefaultsAndEscaping(t *testing.T) {
 func TestIndexWithoutHead(t *testing.T) {
 	h := spa.Handler(fstest.MapFS{"index.html": {Data: []byte("<div>bare</div>")}}, spa.Config{AppName: "x", Env: "staging", SessionURLFile: "/nonexistent"})
 	body := get(h, "GET", "/").Body.String()
-	if !strings.HasPrefix(body, `<script src="/factory.js"></script>`) || !strings.HasSuffix(body, "<div>bare</div>") {
+	if !strings.HasPrefix(body, `<script src="/playground.js"></script>`) || !strings.HasSuffix(body, "<div>bare</div>") {
 		t.Errorf("body = %s", body)
 	}
 }
@@ -154,7 +154,7 @@ func TestAssistantFlag(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			h := spa.Handler(site, spa.Config{Assistant: tc.on, SessionURLFile: "/nonexistent"})
-			if body := get(h, "GET", "/factory.js").Body.String(); !strings.Contains(body, tc.want) {
+			if body := get(h, "GET", "/playground.js").Body.String(); !strings.Contains(body, tc.want) {
 				t.Errorf("body missing %s: %s", tc.want, body)
 			}
 		})

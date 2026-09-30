@@ -46,8 +46,8 @@ type Config struct {
 	// AppName is the sending app (APP_NAME); it names the default sender and
 	// the staging subject prefix.
 	AppName string
-	// FactoryDomain is FACTORY_DOMAIN; the default sender is AppName@FactoryDomain.
-	FactoryDomain string
+	// PlaygroundDomain is PLAYGROUND_DOMAIN; the default sender is AppName@PlaygroundDomain.
+	PlaygroundDomain string
 	// From overrides the default sender address.
 	From string
 	// Env is APP_ENV. Anything other than "production" is treated as staging.
@@ -55,8 +55,8 @@ type Config struct {
 	// StagingSink is the inbox every staging message is redirected to
 	// (MAIL_STAGING_SINK). Required outside production.
 	StagingSink string
-	// FactoryName is shown in the layout header; default FactoryDomain.
-	FactoryName string
+	// PlaygroundName is shown in the layout header; default PlaygroundDomain.
+	PlaygroundName string
 	// Templates holds the app's own templates; may be nil.
 	Templates fs.FS
 	// BaseURL overrides the provider endpoint (tests).
@@ -66,12 +66,12 @@ type Config struct {
 }
 
 // ConfigFromEnv reads MAIL_PROVIDER, MAIL_API_KEY, MAIL_STAGING_SINK,
-// APP_NAME, APP_ENV and FACTORY_DOMAIN.
+// APP_NAME, APP_ENV and PLAYGROUND_DOMAIN.
 func ConfigFromEnv() Config {
 	return Config{
 		Provider: os.Getenv("MAIL_PROVIDER"), APIKey: os.Getenv("MAIL_API_KEY"),
 		StagingSink: os.Getenv("MAIL_STAGING_SINK"), AppName: os.Getenv("APP_NAME"),
-		Env: os.Getenv("APP_ENV"), FactoryDomain: os.Getenv("FACTORY_DOMAIN"),
+		Env: os.Getenv("APP_ENV"), PlaygroundDomain: os.Getenv("PLAYGROUND_DOMAIN"),
 	}
 }
 
@@ -94,10 +94,10 @@ func New(cfg Config) (*Mailer, error) {
 	}
 	from := cfg.From
 	if from == "" {
-		if cfg.FactoryDomain == "" {
-			return nil, errors.New("mail: FACTORY_DOMAIN (or an explicit From) is required")
+		if cfg.PlaygroundDomain == "" {
+			return nil, errors.New("mail: PLAYGROUND_DOMAIN (or an explicit From) is required")
 		}
-		from = cfg.AppName + "@" + cfg.FactoryDomain
+		from = cfg.AppName + "@" + cfg.PlaygroundDomain
 	}
 	if _, err := nmail.ParseAddress(from); err != nil {
 		return nil, fmt.Errorf("mail: sender %q: %w", from, err)
@@ -123,10 +123,10 @@ func New(cfg Config) (*Mailer, error) {
 	default:
 		return nil, fmt.Errorf("mail: unknown MAIL_PROVIDER %q (want resend or postmark)", cfg.Provider)
 	}
-	if cfg.FactoryName == "" {
-		cfg.FactoryName = cfg.FactoryDomain
+	if cfg.PlaygroundName == "" {
+		cfg.PlaygroundName = cfg.PlaygroundDomain
 	}
-	tpl, err := NewTemplates(cfg.Templates, cfg.FactoryName)
+	tpl, err := NewTemplates(cfg.Templates, cfg.PlaygroundName)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ type provider interface {
 }
 
 // Send validates m, applies the staging rewrite, and sends it. From defaults
-// to APP_NAME@FACTORY_DOMAIN. Bodies are never logged.
+// to APP_NAME@PLAYGROUND_DOMAIN. Bodies are never logged.
 func (m *Mailer) Send(ctx context.Context, msg Message) error {
 	out, err := m.prepare(msg)
 	if err != nil {
@@ -225,11 +225,11 @@ func (m *Mailer) SendTemplate(ctx context.Context, to []string, subject, name st
 // Page is the root data for a template: the base layout's placeholders plus
 // the app's own data under .Data.
 type Page struct {
-	Title       string
-	Preheader   string
-	FactoryName string // defaults to the Mailer's factory name
-	Footer      string
-	Data        any
+	Title          string
+	Preheader      string
+	PlaygroundName string // defaults to the Mailer's playground name
+	Footer         string
+	Data           any
 }
 
 // Rendered is a rendered text and HTML pair.
@@ -237,14 +237,14 @@ type Rendered struct{ Text, HTML string }
 
 // Templates renders app templates on top of the embedded base layout.
 type Templates struct {
-	app         fs.FS
-	factoryName string
+	app            fs.FS
+	playgroundName string
 }
 
 // NewTemplates returns a renderer for app templates in appFS (may be nil, in
 // which case only the base layout is available and every Render fails).
-func NewTemplates(appFS fs.FS, factoryName string) (*Templates, error) {
-	t := &Templates{app: appFS, factoryName: factoryName}
+func NewTemplates(appFS fs.FS, playgroundName string) (*Templates, error) {
+	t := &Templates{app: appFS, playgroundName: playgroundName}
 	// Fail early if the embedded base does not parse.
 	if _, err := htmltemplate.New("base").ParseFS(baseFS, "templates/base.html.tmpl"); err != nil {
 		return nil, fmt.Errorf("mail: parsing base HTML layout: %w", err)
@@ -264,8 +264,8 @@ func (t *Templates) Render(name string, data Page) (Rendered, error) {
 	if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
 		return Rendered{}, fmt.Errorf("mail: invalid template name %q", name)
 	}
-	if data.FactoryName == "" {
-		data.FactoryName = t.factoryName
+	if data.PlaygroundName == "" {
+		data.PlaygroundName = t.playgroundName
 	}
 
 	htmlSrc, err := fs.ReadFile(t.app, name+".html.tmpl")

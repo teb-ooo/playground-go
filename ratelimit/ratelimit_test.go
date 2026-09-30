@@ -12,7 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/teb-ooo/factory-go/ratelimit"
+	"github.com/teb-ooo/playground-go/ratelimit"
 )
 
 type clock struct{ t time.Time }

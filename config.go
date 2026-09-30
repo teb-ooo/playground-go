@@ -1,8 +1,8 @@
-// Package factory is the convenience entry point of factory-go: Config, loaded
-// from the environment every factory container gets, with validation, so
+// Package playground is the convenience entry point of playground-go: Config, loaded
+// from the environment every playground container gets, with validation, so
 // apps do not reimplement it. The library packages live beside it: openapimcp,
 // auth, health, log, assistant, mail, spa and testkit.
-package factory
+package playground
 
 import (
 	"errors"
@@ -15,10 +15,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/teb-ooo/factory-go/assistant"
-	"github.com/teb-ooo/factory-go/auth"
-	"github.com/teb-ooo/factory-go/mail"
-	"github.com/teb-ooo/factory-go/spa"
+	"github.com/teb-ooo/playground-go/assistant"
+	"github.com/teb-ooo/playground-go/auth"
+	"github.com/teb-ooo/playground-go/mail"
+	"github.com/teb-ooo/playground-go/spa"
 )
 
 // Environments.
@@ -27,7 +27,7 @@ const (
 	EnvProduction = "production"
 )
 
-// DefaultAssistantModel is the factory-wide model (BOOTSTRAP section 6b).
+// DefaultAssistantModel is the playground-wide model (BOOTSTRAP section 6b).
 const DefaultAssistantModel = assistant.DefaultModel
 
 // Config is an app's configuration. Load it with LoadConfig.
@@ -46,16 +46,16 @@ type Config struct {
 	Env string
 	// PublicURL is PUBLIC_URL, the app's external origin.
 	PublicURL string
-	// FactoryDomain is FACTORY_DOMAIN, for example teb.ooo.
-	FactoryDomain string
+	// PlaygroundDomain is PLAYGROUND_DOMAIN, for example teb.ooo.
+	PlaygroundDomain string
 	// Mail is MAIL_PROVIDER, MAIL_API_KEY, MAIL_STAGING_SINK, MAIL_FROM plus
-	// AppName, Env and FactoryDomain. Provider is empty when mail is not configured.
+	// AppName, Env and PlaygroundDomain. Provider is empty when mail is not configured.
 	Mail mail.Config
 	// AssistantModel is ASSISTANT_MODEL (default claude-sonnet-5-5).
 	AssistantModel string
 	// AnthropicAPIKey is ANTHROPIC_API_KEY; empty means the assistant is off.
 	AnthropicAPIKey string
-	// Assistant is FACTORY_ASSISTANT (true|false, default false): whether the
+	// Assistant is PLAYGROUND_ASSISTANT (true|false, default false): whether the
 	// frontend offers the assistant. Independent of AnthropicAPIKey.
 	Assistant bool
 	// Version is the build version. Not read from the environment: set it from
@@ -70,14 +70,14 @@ func LoadConfig() (Config, error) { return FromEnv(os.Getenv) }
 func FromEnv(getenv func(string) string) (Config, error) {
 	get := func(k string) string { return strings.TrimSpace(getenv(k)) }
 	c := Config{
-		Port:            get("PORT"),
-		DatabaseURL:     get("DATABASE_URL"),
-		AppName:         get("APP_NAME"),
-		Env:             get("APP_ENV"),
-		PublicURL:       strings.TrimRight(get("PUBLIC_URL"), "/"),
-		FactoryDomain:   get("FACTORY_DOMAIN"),
-		AssistantModel:  get("ASSISTANT_MODEL"),
-		AnthropicAPIKey: get("ANTHROPIC_API_KEY"),
+		Port:             get("PORT"),
+		DatabaseURL:      get("DATABASE_URL"),
+		AppName:          get("APP_NAME"),
+		Env:              get("APP_ENV"),
+		PublicURL:        strings.TrimRight(get("PUBLIC_URL"), "/"),
+		PlaygroundDomain: get("PLAYGROUND_DOMAIN"),
+		AssistantModel:   get("ASSISTANT_MODEL"),
+		AnthropicAPIKey:  get("ANTHROPIC_API_KEY"),
 	}
 	if c.Port == "" {
 		c.Port = "8080"
@@ -91,14 +91,14 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 	c.Mail = mail.Config{
 		Provider: get("MAIL_PROVIDER"), APIKey: get("MAIL_API_KEY"), StagingSink: get("MAIL_STAGING_SINK"),
-		From: get("MAIL_FROM"), AppName: c.AppName, Env: c.Env, FactoryDomain: c.FactoryDomain,
+		From: get("MAIL_FROM"), AppName: c.AppName, Env: c.Env, PlaygroundDomain: c.PlaygroundDomain,
 	}
 
 	var errs []error
-	if raw := strings.ToLower(get("FACTORY_ASSISTANT")); raw != "" {
+	if raw := strings.ToLower(get("PLAYGROUND_ASSISTANT")); raw != "" {
 		b, err := strconv.ParseBool(raw)
 		if err != nil {
-			errs = append(errs, errors.New("FACTORY_ASSISTANT must be true or false"))
+			errs = append(errs, errors.New("PLAYGROUND_ASSISTANT must be true or false"))
 		}
 		c.Assistant = b
 	}
@@ -113,7 +113,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		errs = append(errs, err)
 	}
 	if len(errs) > 0 {
-		return c, fmt.Errorf("factory: invalid configuration: %w", errors.Join(errs...))
+		return c, fmt.Errorf("playground: invalid configuration: %w", errors.Join(errs...))
 	}
 	return c, nil
 }
@@ -131,7 +131,7 @@ func (c Config) Validate() error {
 		errs = append(errs, err)
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("factory: invalid configuration: %w", errors.Join(errs...))
+		return fmt.Errorf("playground: invalid configuration: %w", errors.Join(errs...))
 	}
 	return nil
 }
@@ -176,8 +176,8 @@ func (c Config) validate() error {
 		if c.Mail.APIKey == "" {
 			bad("MAIL_API_KEY is required when MAIL_PROVIDER is set")
 		}
-		if c.FactoryDomain == "" && c.Mail.From == "" {
-			bad("FACTORY_DOMAIN (or MAIL_FROM) is required when MAIL_PROVIDER is set")
+		if c.PlaygroundDomain == "" && c.Mail.From == "" {
+			bad("PLAYGROUND_DOMAIN (or MAIL_FROM) is required when MAIL_PROVIDER is set")
 		}
 		if c.Env == EnvStaging && c.Mail.StagingSink == "" {
 			bad("MAIL_STAGING_SINK is required on staging when MAIL_PROVIDER is set")
@@ -210,7 +210,7 @@ func (c Config) Addr() string { return ":" + c.Port }
 func (c Config) AssistantEnabled() bool { return c.AnthropicAPIKey != "" }
 
 // SPA returns the spa.Config for this app: name, environment and the assistant
-// flag. Locale and timezone come from FACTORY_LOCALE and FACTORY_TIMEZONE.
+// flag. Locale and timezone come from PLAYGROUND_LOCALE and PLAYGROUND_TIMEZONE.
 func (c Config) SPA() spa.Config {
 	return spa.Config{AppName: c.AppName, Env: c.Env, Assistant: c.Assistant}
 }
@@ -224,7 +224,7 @@ func (c Config) NewAuth(opts ...auth.Option) (*auth.Auth, error) {
 // It returns an error if mail is not configured.
 func (c Config) NewMailer(templates fs.FS) (*mail.Mailer, error) {
 	if c.Mail.Provider == "" {
-		return nil, errors.New("factory: mail is not configured (MAIL_PROVIDER is empty)")
+		return nil, errors.New("playground: mail is not configured (MAIL_PROVIDER is empty)")
 	}
 	m := c.Mail
 	m.Templates = templates

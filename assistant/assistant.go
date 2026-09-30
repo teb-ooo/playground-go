@@ -17,15 +17,15 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/teb-ooo/factory-go/auth"
-	"github.com/teb-ooo/factory-go/internal/problem"
-	"github.com/teb-ooo/factory-go/internal/uuidv7"
-	"github.com/teb-ooo/factory-go/openapimcp"
+	"github.com/teb-ooo/playground-go/auth"
+	"github.com/teb-ooo/playground-go/internal/problem"
+	"github.com/teb-ooo/playground-go/internal/uuidv7"
+	"github.com/teb-ooo/playground-go/openapimcp"
 )
 
 // Defaults.
 const (
-	// DefaultModel is the factory-wide assistant model (BOOTSTRAP section 6b).
+	// DefaultModel is the playground-wide assistant model (BOOTSTRAP section 6b).
 	DefaultModel = "claude-sonnet-5-5"
 	// DefaultMaxTokens is max_tokens per model call.
 	DefaultMaxTokens = 4096
@@ -102,7 +102,7 @@ func New(api huma.API, app http.Handler, opts Options) (*Assistant, error) {
 		return nil, errors.New("assistant: Options.Store is required")
 	}
 	if opts.APIKey == "" {
-		return nil, errors.New("assistant: no Anthropic API key configured for this app (ANTHROPIC_API_KEY is empty; set it per app with `factory secrets set <app> ANTHROPIC_API_KEY`)")
+		return nil, errors.New("assistant: no Anthropic API key configured for this app (ANTHROPIC_API_KEY is empty; set it per app with `playground secrets set <app> ANTHROPIC_API_KEY`)")
 	}
 	if opts.Model == "" {
 		opts.Model = DefaultModel

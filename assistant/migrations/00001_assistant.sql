@@ -1,6 +1,6 @@
 -- +goose Up
 -- The two tables the assistant package persists conversations in. The template
--- ships this migration (renumbered into the app's own sequence); factory-go
+-- ships this migration (renumbered into the app's own sequence); playground-go
 -- embeds a copy as assistant.MigrationsFS for documentation and tests.
 -- IDs are UUIDv7, so ordering by id is ordering by time.
 

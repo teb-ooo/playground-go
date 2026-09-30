@@ -14,7 +14,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/teb-ooo/factory-go/auth"
+	"github.com/teb-ooo/playground-go/auth"
 )
 
 // ErrProduction is returned by every testkit function when APP_ENV=production.

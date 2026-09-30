@@ -1,4 +1,4 @@
-package factory_test
+package playground_test
 
 import (
 	"context"
@@ -13,15 +13,15 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/teb-ooo/factory-go/assistant"
-	"github.com/teb-ooo/factory-go/auth"
-	"github.com/teb-ooo/factory-go/health"
-	factorylog "github.com/teb-ooo/factory-go/log"
-	"github.com/teb-ooo/factory-go/openapimcp"
-	"github.com/teb-ooo/factory-go/spa"
-	"github.com/teb-ooo/factory-go/testkit"
+	"github.com/teb-ooo/playground-go/assistant"
+	"github.com/teb-ooo/playground-go/auth"
+	"github.com/teb-ooo/playground-go/health"
+	playgroundlog "github.com/teb-ooo/playground-go/log"
+	"github.com/teb-ooo/playground-go/openapimcp"
+	"github.com/teb-ooo/playground-go/spa"
+	"github.com/teb-ooo/playground-go/testkit"
 
-	factory "github.com/teb-ooo/factory-go"
+	playground "github.com/teb-ooo/playground-go"
 )
 
 // TestWholeStack wires every package together the way the README shows and
@@ -29,7 +29,7 @@ import (
 // hidden operations stay out of the tool set, and parity holds.
 func TestWholeStack(t *testing.T) {
 	t.Setenv("APP_ENV", "staging")
-	cfg, err := factory.FromEnv(env(nil))
+	cfg, err := playground.FromEnv(env(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestWholeStack(t *testing.T) {
 	mux.Handle("/api/assistant/", assistant.Handler(api, mux, assistant.Options{
 		AppName: cfg.AppName, APIKey: "unused-in-this-test", Store: assistant.NewMemoryStore()}))
 	mux.Handle("/", spa.Handler(fstest.MapFS{"index.html": {Data: []byte("<html><head></head><body></body></html>")}}, spa.Config{AppName: cfg.AppName, Env: cfg.Env, SessionURLFile: "/nonexistent"}))
-	handler := factorylog.Middleware(authn.Middleware(mux))
+	handler := playgroundlog.Middleware(authn.Middleware(mux))
 
 	// Parity: only whoami is a tool; /auth/me and /healthz are hidden.
 	openapimcp.ParityCheck(t, api, mcpH)
@@ -95,8 +95,8 @@ func TestWholeStack(t *testing.T) {
 		{"me anonymous", "/auth/me", nil, 401, ""},
 		{"me admin", "/auth/me", admin, 200, `"is_admin":true`},
 		{"healthz", "/healthz", nil, 200, `"db":"ok"`},
-		{"spa fallback", "/some/route", nil, 200, `<script src="/factory.js">`},
-		{"factory.js", "/factory.js", nil, 200, "window.__FACTORY__"},
+		{"spa fallback", "/some/route", nil, 200, `<script src="/playground.js">`},
+		{"playground.js", "/playground.js", nil, 200, "window.__PLAYGROUND__"},
 		{"assistant needs login", "/api/assistant/conversations", nil, 401, ""},
 		{"assistant list", "/api/assistant/conversations", admin, 200, "[]"},
 	}

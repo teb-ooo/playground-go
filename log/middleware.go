@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/teb-ooo/factory-go/internal/uuidv7"
+	"github.com/teb-ooo/playground-go/internal/uuidv7"
 )
 
 type ridKey struct{}

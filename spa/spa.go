@@ -1,8 +1,8 @@
 // Package spa serves an embedded single-page app: it serves files from an
 // fs.FS, falls back to index.html for unknown paths, and injects
-// window.__FACTORY__ (app_name, env, claude_session_url, locale,
+// window.__PLAYGROUND__ (app_name, env, claude_session_url, locale,
 // timezone, assistant) so the frontend knows where it runs. The statement is
-// served at /factory.js and index.html loads it with a classic script tag in
+// served at /playground.js and index.html loads it with a classic script tag in
 // <head>: the site's Content-Security-Policy (script-src 'self') blocks inline
 // scripts, so it cannot be injected inline.
 package spa
@@ -20,19 +20,19 @@ import (
 
 // DefaultSessionURLFile is where the s6 claude service writes the Claude app
 // session URL.
-const DefaultSessionURLFile = "/app/.factory/session_url"
+const DefaultSessionURLFile = "/app/.playground/session_url"
 
-// FactoryJSPath is where the window.__FACTORY__ statement is served.
-const FactoryJSPath = "/factory.js"
+// PlaygroundJSPath is where the window.__PLAYGROUND__ statement is served.
+const PlaygroundJSPath = "/playground.js"
 
-// Config is the data injected as window.__FACTORY__.
+// Config is the data injected as window.__PLAYGROUND__.
 type Config struct {
 	AppName string
 	Env     string
 	// Assistant tells the frontend the end-user assistant is enabled (the
 	// command palette shows "Ask assistant..." only then). Default false.
 	Assistant bool
-	// Locale is FACTORY_LOCALE (default en-US) and Timezone FACTORY_TIMEZONE
+	// Locale is PLAYGROUND_LOCALE (default en-US) and Timezone PLAYGROUND_TIMEZONE
 	// (default UTC); the web package's fmt helpers format with them.
 	Locale   string
 	Timezone string
@@ -55,10 +55,10 @@ func Handler(fsys fs.FS, cfg ...Config) http.Handler {
 		c.Env = os.Getenv("APP_ENV")
 	}
 	if c.Locale == "" {
-		c.Locale = envOr("FACTORY_LOCALE", "en-US")
+		c.Locale = envOr("PLAYGROUND_LOCALE", "en-US")
 	}
 	if c.Timezone == "" {
-		c.Timezone = envOr("FACTORY_TIMEZONE", "UTC")
+		c.Timezone = envOr("PLAYGROUND_TIMEZONE", "UTC")
 	}
 	if c.SessionURLFile == "" {
 		c.SessionURLFile = DefaultSessionURLFile
@@ -78,7 +78,7 @@ type handler struct {
 	cfg  Config
 }
 
-func (h *handler) factoryScript() []byte {
+func (h *handler) playgroundScript() []byte {
 	session := ""
 	if b, err := os.ReadFile(h.cfg.SessionURLFile); err == nil {
 		session = strings.TrimSpace(string(b))
@@ -87,11 +87,11 @@ func (h *handler) factoryScript() []byte {
 		"app_name": h.cfg.AppName, "env": h.cfg.Env, "claude_session_url": session,
 		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "assistant": h.cfg.Assistant,
 	})
-	return append(append([]byte("window.__FACTORY__ = "), data...), ';')
+	return append(append([]byte("window.__PLAYGROUND__ = "), data...), ';')
 }
 
 // scriptTag is what index.html gets: a same-origin classic script, allowed by script-src 'self'.
-var scriptTag = []byte(`<script src="` + FactoryJSPath + `"></script>`)
+var scriptTag = []byte(`<script src="` + PlaygroundJSPath + `"></script>`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -103,12 +103,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "index.html"
 	}
-	if "/"+name == FactoryJSPath {
+	if "/"+name == PlaygroundJSPath {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
 		if r.Method != http.MethodHead {
-			_, _ = w.Write(h.factoryScript())
+			_, _ = w.Write(h.playgroundScript())
 		}
 		return
 	}

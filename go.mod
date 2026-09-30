@@ -1,4 +1,4 @@
-module github.com/teb-ooo/factory-go
+module github.com/teb-ooo/playground-go
 
 go 1.27.1
 

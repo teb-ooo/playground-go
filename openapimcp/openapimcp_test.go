@@ -12,7 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/teb-ooo/factory-go/openapimcp"
+	"github.com/teb-ooo/playground-go/openapimcp"
 )
 
 type Item struct {
@@ -210,7 +210,7 @@ func TestCalls(t *testing.T) {
 		})
 	}
 	h := openapimcp.Handler(api, mux, openapimcp.Options{Auth: marker})
-	s := connect(t, h, http.Header{"Authorization": {"Bearer abc"}, "Cookie": {"factory_session=xyz"}})
+	s := connect(t, h, http.Header{"Authorization": {"Bearer abc"}, "Cookie": {"playground_session=xyz"}})
 
 	tests := []struct {
 		name    string
@@ -223,7 +223,7 @@ func TestCalls(t *testing.T) {
 		{"query and array", "list-items", map[string]any{"limit": 3, "tag": []string{"x", "y"}}, false, []string{"limit=3", `"tags":["x","y"]`}},
 		{"flattened body", "create-item", map[string]any{"name": "milk", "tags": []string{"a"}}, false, []string{`"name":"milk"`}},
 		{"nested body plus path", "rename-item", map[string]any{"id": "42", "body": map[string]any{"name": "eggs"}}, false, []string{`"id":"42"`, `"name":"eggs"`}},
-		{"forwards credentials", "whoami", nil, false, []string{"Bearer abc", "factory_session=xyz"}},
+		{"forwards credentials", "whoami", nil, false, []string{"Bearer abc", "playground_session=xyz"}},
 		{"non-2xx is error result", "get-item", map[string]any{"id": "missing"}, true, []string{"HTTP 404", "no such item"}},
 		{"validation is error result", "create-item", map[string]any{"name": ""}, true, []string{"HTTP 422"}},
 		{"missing path param", "get-item", map[string]any{}, true, []string{"missing required path parameter"}},

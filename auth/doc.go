@@ -1,5 +1,5 @@
-// Package auth implements OIDC sign-in for factory apps. The issuer (Ory
-// Hydra at OIDC_ISSUER in the factory) is configuration, never code: the
+// Package auth implements OIDC sign-in for playground apps. The issuer (Ory
+// Hydra at OIDC_ISSUER in the playground) is configuration, never code: the
 // package runs the authorization-code flow with PKCE, state and nonce, keeps
 // the result in a signed and encrypted (AES-GCM) host-only cookie, and also
 // accepts bearer access tokens validated against the issuer's JWKS.

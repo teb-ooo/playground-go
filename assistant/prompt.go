@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/teb-ooo/factory-go/openapimcp"
+	"github.com/teb-ooo/playground-go/openapimcp"
 )
 
 // FirstParagraph returns the first prose paragraph of a SPEC.md document:

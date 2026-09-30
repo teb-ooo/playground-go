@@ -1,4 +1,4 @@
-title = "factory-go gitleaks config"
+title = "playground-go gitleaks config"
 [extend]
 useDefault = true
 [allowlist]

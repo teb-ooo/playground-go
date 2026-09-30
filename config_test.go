@@ -1,4 +1,4 @@
-package factory_test
+package playground_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	factory "github.com/teb-ooo/factory-go"
+	playground "github.com/teb-ooo/playground-go"
 )
 
 func env(overrides map[string]string, drop ...string) func(string) string {
@@ -14,7 +14,7 @@ func env(overrides map[string]string, drop ...string) func(string) string {
 		"APP_NAME": "hello", "APP_ENV": "staging", "DATABASE_URL": "postgres://u:p@db:5432/hello",
 		"OIDC_ISSUER": "https://oidc.teb.ooo", "OIDC_CLIENT_ID": "hello", "OIDC_CLIENT_SECRET": "s3cret-value",
 		"SESSION_KEY": "0123456789abcdef0123456789abcdef", "PUBLIC_URL": "https://hello-staging.teb.ooo/",
-		"FACTORY_DOMAIN": "teb.ooo",
+		"PLAYGROUND_DOMAIN": "teb.ooo",
 	}
 	for k, v := range overrides {
 		m[k] = v
@@ -26,7 +26,7 @@ func env(overrides map[string]string, drop ...string) func(string) string {
 }
 
 func TestFromEnvDefaults(t *testing.T) {
-	c, err := factory.FromEnv(env(nil))
+	c, err := playground.FromEnv(env(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,11 +78,11 @@ func TestFromEnvValidation(t *testing.T) {
 		{"mail without key", map[string]string{"MAIL_PROVIDER": "resend", "MAIL_STAGING_SINK": "a@b.co"}, nil, "MAIL_API_KEY"},
 		{"mail staging without sink", map[string]string{"MAIL_PROVIDER": "resend", "MAIL_API_KEY": "k"}, nil, "MAIL_STAGING_SINK"},
 		{"mail production without sink ok", map[string]string{"APP_ENV": "production", "PUBLIC_URL": "https://h.teb.ooo", "MAIL_PROVIDER": "postmark", "MAIL_API_KEY": "k"}, nil, ""},
-		{"mail without domain", map[string]string{"MAIL_PROVIDER": "resend", "MAIL_API_KEY": "k", "MAIL_STAGING_SINK": "a@b.co"}, []string{"FACTORY_DOMAIN"}, "FACTORY_DOMAIN"},
+		{"mail without domain", map[string]string{"MAIL_PROVIDER": "resend", "MAIL_API_KEY": "k", "MAIL_STAGING_SINK": "a@b.co"}, []string{"PLAYGROUND_DOMAIN"}, "PLAYGROUND_DOMAIN"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := factory.FromEnv(env(tc.over, tc.drop...))
+			_, err := playground.FromEnv(env(tc.over, tc.drop...))
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -97,7 +97,7 @@ func TestFromEnvValidation(t *testing.T) {
 }
 
 func TestAllProblemsReportedAtOnceWithoutSecrets(t *testing.T) {
-	_, err := factory.FromEnv(env(map[string]string{"APP_ENV": "x", "PORT": "0", "OIDC_CLIENT_SECRET": "", "SESSION_KEY": "very-secret-but-wrong-length"}))
+	_, err := playground.FromEnv(env(map[string]string{"APP_ENV": "x", "PORT": "0", "OIDC_CLIENT_SECRET": "", "SESSION_KEY": "very-secret-but-wrong-length"}))
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -112,7 +112,7 @@ func TestAllProblemsReportedAtOnceWithoutSecrets(t *testing.T) {
 }
 
 func TestMailAndAssistantWiring(t *testing.T) {
-	c, err := factory.FromEnv(env(map[string]string{
+	c, err := playground.FromEnv(env(map[string]string{
 		"MAIL_PROVIDER": "resend", "MAIL_API_KEY": "mk", "MAIL_STAGING_SINK": "sink@example.org",
 		"ANTHROPIC_API_KEY": "ak", "ASSISTANT_MODEL": "claude-opus-5-5",
 	}))
@@ -132,7 +132,7 @@ func TestMailAndAssistantWiring(t *testing.T) {
 }
 
 func TestValidateOnHandBuiltConfig(t *testing.T) {
-	c, _ := factory.FromEnv(env(nil))
+	c, _ := playground.FromEnv(env(nil))
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestValidateOnHandBuiltConfig(t *testing.T) {
 }
 
 func TestLogValueRedactsSecrets(t *testing.T) {
-	c, _ := factory.FromEnv(env(map[string]string{"ANTHROPIC_API_KEY": "sk-ant-topsecret"}))
+	c, _ := playground.FromEnv(env(map[string]string{"ANTHROPIC_API_KEY": "sk-ant-topsecret"}))
 	var buf bytes.Buffer
 	slog.New(slog.NewJSONHandler(&buf, nil)).Info("config", "config", c)
 	out := buf.String()
@@ -157,7 +157,7 @@ func TestLogValueRedactsSecrets(t *testing.T) {
 	}
 }
 
-func TestFactoryAssistantFlag(t *testing.T) {
+func TestPlaygroundAssistantFlag(t *testing.T) {
 	tests := []struct {
 		val     string
 		want    bool
@@ -165,7 +165,7 @@ func TestFactoryAssistantFlag(t *testing.T) {
 	}{{"", false, false}, {"true", true, false}, {"TRUE", true, false}, {"false", false, false}, {"1", true, false}, {"yes", false, true}}
 	for _, tc := range tests {
 		t.Run(tc.val, func(t *testing.T) {
-			c, err := factory.FromEnv(env(map[string]string{"FACTORY_ASSISTANT": tc.val}))
+			c, err := playground.FromEnv(env(map[string]string{"PLAYGROUND_ASSISTANT": tc.val}))
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err = %v", err)
 			}

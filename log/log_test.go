@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	flog "github.com/teb-ooo/factory-go/log"
+	flog "github.com/teb-ooo/playground-go/log"
 )
 
 func TestSecretsFromEnv(t *testing.T) {

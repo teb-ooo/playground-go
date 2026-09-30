@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/teb-ooo/factory-go/auth"
-	"github.com/teb-ooo/factory-go/testkit"
+	"github.com/teb-ooo/playground-go/auth"
+	"github.com/teb-ooo/playground-go/testkit"
 )
 
 var key = []byte("0123456789abcdef0123456789abcdef")

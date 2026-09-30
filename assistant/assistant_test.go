@@ -18,8 +18,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/teb-ooo/factory-go/assistant"
-	"github.com/teb-ooo/factory-go/auth"
+	"github.com/teb-ooo/playground-go/assistant"
+	"github.com/teb-ooo/playground-go/auth"
 )
 
 // ---- fake Anthropic server ----
@@ -343,8 +343,8 @@ func TestToolLoopRunsAsSignedInUser(t *testing.T) { testToolLoop(t, nil) }
 // stored tool_use/tool_result blocks survive a jsonb round trip and are accepted
 // again on the next turn.
 func TestToolLoopWithPgxStore(t *testing.T) {
-	if os.Getenv("FACTORY_TEST_DATABASE_URL") == "" {
-		t.Skip("FACTORY_TEST_DATABASE_URL not set")
+	if os.Getenv("PLAYGROUND_TEST_DATABASE_URL") == "" {
+		t.Skip("PLAYGROUND_TEST_DATABASE_URL not set")
 	}
 	testToolLoop(t, func(o *assistant.Options) { o.Store = newPgxStore(t) })
 }
@@ -359,7 +359,7 @@ func testToolLoop(t *testing.T, mut func(*assistant.Options)) {
 		}
 	}, mut)
 	conv := h.newConv(t, "u1")
-	_, evs := h.send(t, "u1", conv, "what is item 42?", map[string]string{"Cookie": "factory_session=abc", "Authorization": "Bearer xyz"})
+	_, evs := h.send(t, "u1", conv, "what is item 42?", map[string]string{"Cookie": "playground_session=abc", "Authorization": "Bearer xyz"})
 	// tool_call is emitted right before each execution, tool_result right after.
 	if want := "text,text,tool_call,tool_result,tool_call,tool_result,text,text,done"; names(evs) != want {
 		t.Fatalf("events = %s, want %s", names(evs), want)
@@ -374,7 +374,7 @@ func testToolLoop(t *testing.T, mut func(*assistant.Options)) {
 		t.Errorf("result 0 = %v", results[0].Data)
 	}
 	who := results[1].Data["content"].(string)
-	for _, want := range []string{`"user":"u1"`, "factory_session=abc", "Bearer xyz"} {
+	for _, want := range []string{`"user":"u1"`, "playground_session=abc", "Bearer xyz"} {
 		if !strings.Contains(who, want) {
 			t.Errorf("whoami result %q missing %q (the caller's identity must be forwarded)", who, want)
 		}
@@ -777,7 +777,7 @@ func TestNewWithoutAPIKeyExplainsWhat(t *testing.T) {
 	if err == nil {
 		t.Fatal("an empty API key must be an error")
 	}
-	for _, want := range []string{"no Anthropic API key configured", "ANTHROPIC_API_KEY", "factory secrets set"} {
+	for _, want := range []string{"no Anthropic API key configured", "ANTHROPIC_API_KEY", "playground secrets set"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
 		}

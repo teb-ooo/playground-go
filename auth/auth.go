@@ -17,8 +17,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"golang.org/x/oauth2"
 
-	"github.com/teb-ooo/factory-go/internal/problem"
-	"github.com/teb-ooo/factory-go/ratelimit"
+	"github.com/teb-ooo/playground-go/internal/problem"
+	"github.com/teb-ooo/playground-go/ratelimit"
 )
 
 // OIDCConfig is the provider configuration, read from OIDC_ISSUER,

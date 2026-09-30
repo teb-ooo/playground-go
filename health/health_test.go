@@ -13,7 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/teb-ooo/factory-go/health"
+	"github.com/teb-ooo/playground-go/health"
 )
 
 type pinger struct{ err error }
