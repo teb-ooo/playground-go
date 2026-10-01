@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/teb-ooo/playground-go/auth"
 	"github.com/teb-ooo/playground-go/ratelimit"
+	"github.com/teb-ooo/playground-go/testkit"
 )
 
 var testKey = []byte("0123456789abcdef0123456789abcdef")
@@ -253,7 +255,7 @@ func TestFullFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]any{"subject": "user-1", "email": "ada@teb.ooo", "username": "ada",
-		"picture": "https://id.teb.ooo/avatar/user-1", "is_admin": true}
+		"picture": "https://id.teb.ooo/avatar/user-1", "is_admin": true, "is_owner": false}
 	for k, v := range want {
 		if me[k] != v {
 			t.Errorf("me[%s] = %v, want %v", k, me[k], v)
@@ -282,7 +284,7 @@ func TestNonAdminGroupsEmptyArray(t *testing.T) {
 		t.Errorf("default next = %q", w.Header().Get("Location"))
 	}
 	w = e.do("GET", "/auth/me", []*http.Cookie{cookieNamed(w, auth.CookieName)}, nil)
-	if !strings.Contains(w.Body.String(), `"groups":[]`) || !strings.Contains(w.Body.String(), `"is_admin":false`) {
+	if !strings.Contains(w.Body.String(), `"groups":[]`) || !strings.Contains(w.Body.String(), `"is_admin":false`) || !strings.Contains(w.Body.String(), `"is_owner":false`) {
 		t.Errorf("body = %s", w.Body)
 	}
 }
@@ -660,5 +662,38 @@ func TestAllCookiesHaveSafeAttributes(t *testing.T) {
 		if strings.Contains(line, "Domain=") {
 			t.Errorf("Set-Cookie %q must be host-only", line)
 		}
+	}
+}
+
+func TestMeReportsOwner(t *testing.T) {
+	for _, tc := range []struct {
+		name, owner string
+		want        bool
+	}{
+		{"no owner", "", false},
+		{"other owner", "someone@else.co", false},
+		{"owner, case-insensitive", " ADA@teb.OOO ", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, err := auth.New(auth.OIDCConfig{Issuer: "https://oidc.example", ClientID: "c", PublicURL: "https://app.example"}, bytes.Repeat([]byte{1}, 32), auth.WithOwner(tc.owner))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mux := http.NewServeMux()
+			api := humago.New(mux, huma.DefaultConfig("t", "1"))
+			a.Register(api, mux)
+			h := a.Middleware(mux)
+			cookie, err := testkit.MintSession(bytes.Repeat([]byte{1}, 32), auth.User{Subject: "u", Email: "ada@teb.ooo"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest("GET", "/auth/me", nil)
+			r.AddCookie(cookie)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != 200 || !strings.Contains(w.Body.String(), fmt.Sprintf(`"is_owner":%v`, tc.want)) {
+				t.Fatalf("%d %s", w.Code, w.Body)
+			}
+		})
 	}
 }

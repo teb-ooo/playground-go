@@ -56,6 +56,8 @@ type Config struct {
 	Mail mail.Config
 	// AssistantModel is ASSISTANT_MODEL (default claude-sonnet-5-5).
 	AssistantModel string
+	// AppOwner is APP_OWNER, the owner's email (lower case), empty when the app has no owner. Pass it to auth.WithOwner.
+	AppOwner string
 	// AnthropicAPIKey is ANTHROPIC_API_KEY; empty means the assistant is off.
 	AnthropicAPIKey string
 	// Assistant is PLAYGROUND_ASSISTANT (true|false, default false): whether the
@@ -80,6 +82,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		PublicURL:        strings.TrimRight(get("PUBLIC_URL"), "/"),
 		PlaygroundDomain: get("PLAYGROUND_DOMAIN"),
 		AssistantModel:   get("ASSISTANT_MODEL"),
+		AppOwner:         strings.ToLower(strings.TrimSpace(get("APP_OWNER"))),
 		AnthropicAPIKey:  get("ANTHROPIC_API_KEY"),
 	}
 	if c.Port == "" {
@@ -220,7 +223,7 @@ func (c Config) SPA() spa.Config {
 
 // NewAuth builds the auth package's Auth from the config.
 func (c Config) NewAuth(opts ...auth.Option) (*auth.Auth, error) {
-	return auth.New(c.OIDC, c.SessionKey, opts...)
+	return auth.New(c.OIDC, c.SessionKey, append([]auth.Option{auth.WithOwner(c.AppOwner)}, opts...)...)
 }
 
 // NewMailer builds the mailer (transport only; the app renders its own email

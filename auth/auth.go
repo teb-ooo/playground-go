@@ -51,6 +51,7 @@ type Auth struct {
 	provider *oidc.Provider
 	bearer   *bearerCache
 
+	owner      string
 	rl         ratelimit.Options
 	noRL       bool
 	loginRL    *ratelimit.Limiter
@@ -62,6 +63,12 @@ type Option func(*Auth)
 
 // WithHTTPClient sets the client used to talk to the issuer.
 func WithHTTPClient(c *http.Client) Option { return func(a *Auth) { a.client = c } }
+
+// WithOwner sets the app owner's email (APP_OWNER). GET /auth/me then reports is_owner for the person whose email
+// matches it, compared case-insensitively. An empty owner means nobody is the owner.
+func WithOwner(email string) Option {
+	return func(a *Auth) { a.owner = strings.ToLower(strings.TrimSpace(email)) }
+}
 
 // WithSessionTTL sets the session lifetime (default DefaultSessionTTL).
 func WithSessionTTL(d time.Duration) Option { return func(a *Auth) { a.ttl = d } }
@@ -150,7 +157,7 @@ func (a *Auth) Register(api huma.API, mux *http.ServeMux) {
 	mux.Handle("GET /auth/callback", a.limited(a.callbackRL, a.handleCallback))
 	mux.HandleFunc("GET /auth/logout", a.handleLogout)
 	mux.HandleFunc("POST /auth/logout", a.handleLogout)
-	registerMe(api)
+	registerMe(api, a.owner)
 }
 
 func (a *Auth) limited(l *ratelimit.Limiter, h http.HandlerFunc) http.Handler {

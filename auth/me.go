@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -15,6 +16,7 @@ type MeBody struct {
 	Picture  string   `json:"picture" doc:"Avatar URL, empty if none."`
 	Groups   []string `json:"groups" doc:"Roles from the identity's groups claim."`
 	IsAdmin  bool     `json:"is_admin" doc:"True when groups contains admin."`
+	IsOwner  bool     `json:"is_owner" doc:"True when the email equals the app owner (APP_OWNER), compared case-insensitively."`
 }
 
 // MeOutput is the Huma output type of get-current-user.
@@ -23,13 +25,13 @@ type MeOutput struct {
 	Body         MeBody
 }
 
-func registerMe(api huma.API) {
+func registerMe(api huma.API, owner string) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-current-user",
 		Method:      http.MethodGet,
 		Path:        "/auth/me",
 		Summary:     "Get the signed-in user",
-		Description: "Returns the signed-in user's subject, email, username, picture, groups and admin flag, or 401 when nobody is signed in. Read by the web package; hidden from MCP.",
+		Description: "Returns the signed-in user's subject, email, username, picture, groups and admin flag and owner flag, or 401 when nobody is signed in. Read by the web package; hidden from MCP.",
 		Tags:        []string{"auth"},
 		Hidden:      true,
 		Security:    []map[string][]string{{"session": {}}, {"bearer": {}}},
@@ -45,6 +47,7 @@ func registerMe(api huma.API) {
 		return &MeOutput{CacheControl: "no-store", Body: MeBody{
 			Subject: u.Subject, Email: u.Email, Username: u.Username, Picture: u.Picture,
 			Groups: groups, IsAdmin: u.IsAdmin(),
+			IsOwner: owner != "" && strings.EqualFold(strings.TrimSpace(u.Email), owner),
 		}}, nil
 	})
 }
