@@ -8,7 +8,7 @@ playground-go is the shared Go library every playground app is built on: it turn
 go vet ./... && go test ./... -race
 ```
 
-One optional integration check skips itself unless configured: the Postgres store test (`PLAYGROUND_TEST_DATABASE_URL=postgres://postgres:x@127.0.0.1:55432/postgres`, a throwaway database, for example `docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=x postgres:17.11`). No test calls the real Anthropic API or any real mail provider; they use httptest fakes.
+One optional integration check skips itself unless configured: the Postgres store test (`PLAYGROUND_TEST_DATABASE_URL=postgres://postgres:x@127.0.0.1:55432/postgres`, used by the assistant and apitoken store tests; a throwaway database, for example `docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=x postgres:17.11`). No test calls the real Anthropic API or any real mail provider; they use httptest fakes.
 
 ## Usage
 
@@ -21,6 +21,7 @@ api := humago.New(mux, huma.DefaultConfig(cfg.AppName, cfg.Version))
 auth.AddSecuritySchemes(api.OpenAPI())     // declares "session" and "bearer"
 authn.Register(api, mux)                   // /auth/login, /auth/callback, /auth/logout, GET /auth/me (hidden)
 health.Register(api, pool, cfg.Version)    // GET /healthz (hidden)
+apitoken.Register(api, tokenStore, apitoken.Options{}) // optional: PAT management; also pass auth.WithTokenVerifier to NewAuth's options
 registerItems(api, pool)                   // your operations: OperationID, Summary, Description are mandatory
 
 mcpH := openapimcp.Handler(api, mux, openapimcp.Options{Name: cfg.AppName, Auth: authn.BearerOrSession})
@@ -53,6 +54,7 @@ Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth
 | `openapimcp` | One MCP tool per OpenAPI operation, executed in-process with the caller's credentials forwarded. `Handler`, `New`, `Tools()`, `ParityCheck`. |
 | `surface` | Server-side marker of the door a request came through (`ui`, `api`, `mcp`, `assistant`): `surface.From(ctx)` in an operation handler, `surface.Middleware` mounted outermost. Set by the MCP server and the assistant for their tool calls; cannot be forged by a client header. |
 | `auth` | OIDC code flow with PKCE, state and nonce; encrypted session cookie; bearer tokens; `Require`, `RequireAdmin`, `User`. |
+| `apitoken` | Personal access tokens (`pat_` + 32 random bytes, only the SHA-256 stored) so external MCP clients and scripts can call `/mcp` and the API for a long time: `Store` (`PgxStore`, `MemoryStore`, migration `apitoken/migrations/00001_api_tokens.sql`), `Verifier` (plug in with `auth.WithTokenVerifier(v.Verify)`; rejects revoked and expired, throttles `last_used_at`, rate limits failed lookups per IP) and `Register` (hidden, session-only `create-api-token`, `list-api-tokens`, `revoke-api-token` at `/api/tokens`). A token carries no groups, so never admin by itself. |
 | `ratelimit` | In-memory token bucket for net/http and Huma, keyed by client IP (last `X-Forwarded-For` hop from a trusted proxy) and an optional extra key. |
 | `live` | Rule WEB-50, the server half: `Hub` (`Publish(resource, audience)` after a write, never blocks, per-subscriber coalescing), audiences (`Everyone`, `Subject`, `Admins`, `Project`), `Mount(mux, hub)` for `GET /api/live` (SSE: `: live`, `change`, `degraded`, `: ping` every 25 s, 1 h lifetime, 8 streams per person, 401/429 problem+json), and `Relay` for an upstream stream such as playd's `/v1/work/events`. Not a Huma operation. |
 | `health` | `GET /healthz` returning `{version, env, db, uptime_seconds}`. |
