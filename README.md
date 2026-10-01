@@ -66,6 +66,10 @@ Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth
 
 The one error shape is Huma's default RFC 9457 `application/problem+json`: `title`, `status`, `detail` and, for validation failures, `errors[]` (each with `message`, `location`, `value`). Handlers written outside Huma (the auth routes, the assistant routes, the rate limiter) return the same body with `title`, `status` and `detail`. `@teb-ooo/web` types its `ApiError` from this, so do not invent another error format.
 
+### Assistant context hook
+
+`assistant.Options.Context func(ctx, assistant.ContextRequest) ([]assistant.ContextBlock, error)` supplies extra context for one message (injected before the user's text in the user turn, never stored as typed, streamed as the SSE `context` event, recorded compactly and returned as `context` on the message when reloaded); `Options.SystemPromptFunc func(ctx, auth.User, assistant.Conversation) (string, error)` computes the system prompt per message. Errors are soft (a warning block) unless the hook returns `assistant.Abort("reason")` (`assistant.ErrAbort`). Details and the caching rationale are in the package doc. The SSE events are now `text`, `tool_call`, `tool_result`, `done`, `error` and (only with a hook) `context {blocks:[{kind,label,tokens_estimate,metadata?,text?}]}`.
+
 ### MCP instructions, resources and prompts
 
 `openapimcp.Options` also takes `Instructions` (shown at initialize), `Resources []openapimcp.Resource`, `ResourceTemplates []openapimcp.ResourceTemplate` and `Prompts []openapimcp.Prompt`. Handlers: `Read func(ctx, uri) (ResourceContent{Text, Blob, MIMEType}, error)` (return `openapimcp.ErrResourceNotFound` for an unknown id; `openapimcp.MatchTemplate(tmpl, uri)` parses `{vars}`) and `Get func(ctx, args map[string]string) ([]PromptMessage{Role, Text}, error)`. They run behind the same `Auth` as tool calls, as the caller. Not operations: `ParityCheck` ignores them.

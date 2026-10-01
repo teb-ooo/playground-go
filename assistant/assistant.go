@@ -63,6 +63,25 @@ type Options struct {
 	SpecFile string
 	// SystemPrompt replaces the generated system prompt entirely.
 	SystemPrompt string
+	// SystemPromptFunc, if set, is evaluated for every user message and its
+	// result is the system prompt for that message (Lore: the world's vibe and
+	// style). It takes precedence over SystemPrompt; an empty result means "use
+	// the static prompt" (SystemPrompt, or the generated one, which an app can
+	// extend by appending to Assistant.SystemPrompt()). Keep the result stable
+	// per user and conversation: the system prompt carries the prompt-cache
+	// breakpoint, so a text that changes on every message defeats caching. An
+	// error falls back to the static prompt, except ErrAbort, which stops the
+	// message.
+	SystemPromptFunc func(ctx context.Context, user auth.User, conv Conversation) (string, error)
+	// Context, if set, is called once per user message before the model call
+	// and returns extra context blocks for THAT message only: they are injected
+	// in the user turn as clearly labelled content (never stored as if the user
+	// typed them), streamed to the client as a `context` event, and recorded
+	// compactly so a reloaded conversation can show what was in context. See
+	// ContextBlock. An error (or panic) does not break the chat: the client
+	// gets a warning block and the model is called without context. Return
+	// ErrAbort (see Abort) to stop the message instead.
+	Context func(ctx context.Context, req ContextRequest) ([]ContextBlock, error)
 	// Auth wraps the in-process dispatch of tool calls (see openapimcp.Options.Auth).
 	// Usually auth.BearerOrSession. Not needed when the request context already
 	// carries the user, which is the case behind auth.Middleware.
@@ -284,10 +303,12 @@ func (a *Assistant) createConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 type messageView struct {
-	ID        string           `json:"id"`
-	Role      string           `json:"role"`
-	Content   []map[string]any `json:"content"`
-	CreatedAt string           `json:"created_at"`
+	ID      string           `json:"id"`
+	Role    string           `json:"role"`
+	Content []map[string]any `json:"content"`
+	// Context lists what was in context for a user message (see Options.Context).
+	Context   []ContextBlockInfo `json:"context,omitempty"`
+	CreatedAt string             `json:"created_at"`
 }
 
 func (a *Assistant) listMessages(w http.ResponseWriter, r *http.Request) {
@@ -306,9 +327,17 @@ func (a *Assistant) listMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]messageView, 0, len(msgs))
 	for _, m := range msgs {
-		var blocks []map[string]any
-		if err := json.Unmarshal(m.Content, &blocks); err != nil {
+		raw, rec, err := splitRecord(m.Content)
+		if err != nil {
 			continue
+		}
+		var blocks []map[string]any
+		for _, r := range raw {
+			var b map[string]any
+			if json.Unmarshal(r, &b) != nil {
+				continue
+			}
+			blocks = append(blocks, b)
 		}
 		visible := blocks[:0]
 		for _, b := range blocks {
@@ -317,7 +346,7 @@ func (a *Assistant) listMessages(w http.ResponseWriter, r *http.Request) {
 			}
 			visible = append(visible, b)
 		}
-		out = append(out, messageView{ID: m.ID, Role: m.Role, Content: visible, CreatedAt: m.CreatedAt.UTC().Format(time.RFC3339)})
+		out = append(out, messageView{ID: m.ID, Role: m.Role, Content: visible, Context: rec, CreatedAt: m.CreatedAt.UTC().Format(time.RFC3339)})
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
@@ -402,8 +431,14 @@ func (a *Assistant) loadHistory(ctx context.Context, userID, convID string) ([]a
 	}
 	out := make([]anthropic.MessageParam, 0, len(stored))
 	for _, m := range stored {
+		raw, _, err := splitRecord(m.Content) // the context record is not for the model
+		if err != nil {
+			return nil, fmt.Errorf("assistant: stored message %s is unreadable: %w", m.ID, err)
+		}
 		var blocks []anthropic.ContentBlockParamUnion
-		if err := json.Unmarshal(m.Content, &blocks); err != nil {
+		if b, err := json.Marshal(raw); err != nil {
+			return nil, fmt.Errorf("assistant: stored message %s is unreadable: %w", m.ID, err)
+		} else if err := json.Unmarshal(b, &blocks); err != nil {
 			return nil, fmt.Errorf("assistant: stored message %s is unreadable: %w", m.ID, err)
 		}
 		out = append(out, anthropic.MessageParam{Role: anthropic.MessageParamRole(m.Role), Content: blocks})
@@ -436,8 +471,40 @@ func (a *Assistant) persist(ctx context.Context, userID, convID string, ps ...an
 func (a *Assistant) run(ctx context.Context, out *sse, u auth.User, hdr http.Header, conv Conversation, history []anthropic.MessageParam, text string) {
 	fail := func(detail string) { _ = out.send("error", map[string]any{"detail": detail}) }
 
-	userMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(text))
-	if err := a.persist(ctx, u.Subject, conv.ID, userMsg); err != nil {
+	// Per-message hooks run before anything is stored or sent.
+	system := a.system
+	if f := a.opts.SystemPromptFunc; f != nil {
+		sp, err := f(ctx, u, conv)
+		switch {
+		case errors.Is(err, ErrAbort):
+			fail(abortDetail(err))
+			return
+		case err == nil && strings.TrimSpace(sp) != "":
+			system = sp
+		}
+	}
+	blocks, infos, abort := a.runContextHook(ctx, ContextRequest{User: u, Conversation: conv, Text: text, Header: hdr.Clone()})
+	if abort != nil {
+		fail(abortDetail(abort))
+		return
+	}
+	if a.opts.Context != nil {
+		// Always sent when the hook is configured (empty list clears the tray),
+		// and before the model's first text event.
+		if infos == nil {
+			infos = []ContextBlockInfo{}
+		}
+		if err := out.send("context", map[string]any{"blocks": infos}); err != nil {
+			return // client went away
+		}
+	}
+	userMsg, storedContent, err := buildUserTurn(text, blocks, infos)
+	if err != nil {
+		fail("The message could not be saved.")
+		return
+	}
+	if err := a.opts.Store.AppendMessages(context.WithoutCancel(ctx), u.Subject, conv.ID, []Message{
+		{ID: uuidv7.New(), ConversationID: conv.ID, Role: "user", Content: storedContent, CreatedAt: a.opts.Now().UTC()}}); err != nil {
 		fail("The message could not be saved.")
 		return
 	}
@@ -447,13 +514,13 @@ func (a *Assistant) run(ctx context.Context, out *sse, u auth.User, hdr http.Hea
 	}
 	msgs := append(append([]anthropic.MessageParam(nil), history...), userMsg)
 
-	system := []anthropic.TextBlockParam{{Text: a.system, CacheControl: anthropic.NewCacheControlEphemeralParam()}}
+	systemBlocks := []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}}
 	iterations := 0
 	for iterations < a.opts.MaxIterations {
 		iterations++
 		params := anthropic.MessageNewParams{
 			Model: anthropic.Model(a.opts.Model), MaxTokens: a.opts.MaxTokens,
-			System: system, Messages: msgs, Tools: a.tools,
+			System: systemBlocks, Messages: msgs, Tools: a.tools,
 		}
 		if a.opts.Effort != "none" {
 			params.OutputConfig = anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort(a.opts.Effort)}
@@ -536,6 +603,14 @@ func (a *Assistant) run(ctx context.Context, out *sse, u auth.User, hdr http.Hea
 		return
 	}
 	_ = out.send("done", doneEvent("max_iterations"))
+}
+
+// abortDetail is the user-visible reason of an error wrapping ErrAbort.
+func abortDetail(err error) string {
+	if d := strings.TrimPrefix(err.Error(), ErrAbort.Error()+": "); d != err.Error() && d != "" {
+		return d
+	}
+	return "The message was not sent."
 }
 
 // doneEvent is exactly {stop_reason}, the shape the web package's
