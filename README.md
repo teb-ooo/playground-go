@@ -66,6 +66,10 @@ Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth
 
 The one error shape is Huma's default RFC 9457 `application/problem+json`: `title`, `status`, `detail` and, for validation failures, `errors[]` (each with `message`, `location`, `value`). Handlers written outside Huma (the auth routes, the assistant routes, the rate limiter) return the same body with `title`, `status` and `detail`. `@teb-ooo/web` types its `ApiError` from this, so do not invent another error format.
 
+### MCP instructions, resources and prompts
+
+`openapimcp.Options` also takes `Instructions` (shown at initialize), `Resources []openapimcp.Resource`, `ResourceTemplates []openapimcp.ResourceTemplate` and `Prompts []openapimcp.Prompt`. Handlers: `Read func(ctx, uri) (ResourceContent{Text, Blob, MIMEType}, error)` (return `openapimcp.ErrResourceNotFound` for an unknown id; `openapimcp.MatchTemplate(tmpl, uri)` parses `{vars}`) and `Get func(ctx, args map[string]string) ([]PromptMessage{Role, Text}, error)`. They run behind the same `Auth` as tool calls, as the caller. Not operations: `ParityCheck` ignores them.
+
 ### Surface marker
 
 `handler := playgroundlog.Middleware(surface.Middleware(authn.Middleware(mux)))` (surface outside auth). An operation calls `surface.From(ctx)` and gets `surface.UI` (browser, no Authorization header), `surface.API` (anything else direct), `surface.MCP` (a tool call through `openapimcp`) or `surface.Assistant` (a tool call by the in-app assistant). The dispatchers set the marker on the context of the in-process request they build; it is never a header, and `surface.Middleware` deletes `X-Playground-Surface` from incoming requests. Use `surface.From(ctx).IsAI()` for "AI authors in draft" rules.

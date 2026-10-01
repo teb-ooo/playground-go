@@ -26,6 +26,12 @@ type Options struct {
 	Auth func(http.Handler) http.Handler
 	// Instructions is optional guidance returned to MCP clients on initialize.
 	Instructions string
+	// Resources, ResourceTemplates and Prompts are app-defined MCP resources
+	// and prompts (see extras.go). They are not operations: ParityCheck does
+	// not look at them. Each handler runs as the caller, behind Auth.
+	Resources         []Resource
+	ResourceTemplates []ResourceTemplate
+	Prompts           []Prompt
 }
 
 // Server is an MCP server over the tools derived from a Huma API. It
@@ -67,6 +73,9 @@ func New(api huma.API, app http.Handler, opts Options) (*Server, error) {
 	}
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: name, Version: version}, &mcp.ServerOptions{Instructions: opts.Instructions})
+	if err := addExtras(srv, opts); err != nil {
+		return nil, err
+	}
 	for _, t := range ts.Tools() {
 		t := t
 		srv.AddTool(&mcp.Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema},

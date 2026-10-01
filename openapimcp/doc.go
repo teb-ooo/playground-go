@@ -20,6 +20,19 @@
 // represented unambiguously and construction fails with an error. Schemas
 // that reference components are made self-contained under "$defs".
 //
+// # Instructions, resources and prompts
+//
+// Options.Instructions is returned to clients on initialize. Options.Resources
+// (fixed URIs), Options.ResourceTemplates (RFC 6570 URI templates such as
+// "lore://worlds/{id}/context-tray") and Options.Prompts are app-defined MCP
+// resources and prompts. They are not operations: they are not tools and
+// ParityCheck ignores them, so apps that do not set them are unchanged. Their
+// handlers run as the caller: the same Options.Auth that wraps tool calls
+// runs first (so auth.FromContext works, and a rejected caller gets an
+// error), and surface.From(ctx) is surface.MCP. A handler returns text or a
+// blob with a MIME type; ErrResourceNotFound maps to MCP's not-found error;
+// MatchTemplate extracts the {variables} of a template from the URI.
+//
 // # Surface marker
 //
 // Every tool call runs with surface.With(ctx, surface.MCP) on the context of
