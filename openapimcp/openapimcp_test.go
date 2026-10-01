@@ -134,7 +134,7 @@ func TestToolsListing(t *testing.T) {
 	if got := strings.Join(tl.Tools(), ","); got != strings.Join(want, ",") {
 		t.Fatalf("Tools() = %s, want %v", got, want)
 	}
-	openapimcp.ParityCheck(t, api, h)
+	openapimcp.ParityCheck(t, api, h, openapimcp.WithExempt("get-item", "list-items", "create-item", "rename-item", "whoami")) // MCP fixtures, not contract fixtures
 }
 
 func TestInputSchemaMergeRule(t *testing.T) {

@@ -115,3 +115,13 @@ func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 // Unwrap lets http.ResponseController reach the underlying writer.
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Logger returns slog.Default() with the request_id attribute of ctx when Middleware ran, the request-scoped
+// logger handlers and libraries use.
+func Logger(ctx context.Context) *slog.Logger {
+	l := slog.Default()
+	if id := RequestID(ctx); id != "" {
+		l = l.With("request_id", id)
+	}
+	return l
+}

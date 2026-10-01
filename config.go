@@ -14,11 +14,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/teb-ooo/playground-go/apierr"
 	"github.com/teb-ooo/playground-go/assistant"
 	"github.com/teb-ooo/playground-go/auth"
 	"github.com/teb-ooo/playground-go/mail"
 	"github.com/teb-ooo/playground-go/spa"
 )
+
+// Every app imports this package, so the 5xx sanitizing of apierr is installed for all of them.
+func init() { apierr.Install() }
 
 // Environments.
 const (

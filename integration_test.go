@@ -62,7 +62,7 @@ func TestWholeStack(t *testing.T) {
 	handler := playgroundlog.Middleware(authn.Middleware(mux))
 
 	// Parity: only whoami is a tool; /auth/me and /healthz are hidden.
-	openapimcp.ParityCheck(t, api, mcpH)
+	openapimcp.ParityCheck(t, api, mcpH, openapimcp.WithExempt("whoami")) // fixture op predates the contract
 	if got := mcpH.(interface{ Tools() []string }).Tools(); strings.Join(got, ",") != "whoami" {
 		t.Fatalf("tools = %v", got)
 	}

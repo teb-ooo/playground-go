@@ -34,8 +34,14 @@ handler := playgroundlog.Middleware(authn.Middleware(mux))
 Register every operation before `openapimcp.Handler` and `assistant.Handler`; they derive their tools when constructed. The template's parity test is:
 
 ```go
-openapimcp.ParityCheck(t, api, mcpH) // operation ids == MCP tool names; every op has Summary and Description
+openapimcp.ParityCheck(t, api, mcpH) // operation ids == MCP tool names, plus the API contract below
 ```
+
+`ParityCheck` also enforces the API contract of docs/go-api.md on every non-hidden operation. Each failure names the operation, the problem and the fix, and ends with `see docs/go-api.md`: OperationID kebab-case verb-noun (`list-items`), Method matching its route, Path under `/api/`, non-empty Summary, Description and Tags, Security covering `session` and `bearer`, every request and response property name snake_case, properties named `*_at` or `timestamp` with format `date-time`, properties named `id` or `*_id` string with format `uuid`. Known exceptions are exempted per operation, never globally: `openapimcp.WithExempt("operation-id", ...)` as a ParityCheck option, or the operation Extension `Extensions: map[string]any{openapimcp.ExemptExtension: "reason"}` (the reason is mandatory). An exempt operation still takes part in the ids-equal-tools check.
+
+## 5xx responses
+
+The package `apierr` makes every error with status >= 500 a fixed problem+json (`title` = status text, `detail` = "internal error", no `errors` list); the real message and causes are logged with slog (error level, `request_id` from the log middleware) and never sent. Errors below 500 (`huma.Error404NotFound("no such item")`) are untouched. It installs itself from the init of the root `playground` package, so any app importing `playground` (all do) has it; `apierr.Install()` is idempotent if you want the dependency explicit. `log.Logger(ctx)` returns the request-scoped logger.
 
 Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth.User{...})` and set the cookie with `testkit.SetCookieString(cookie)`. Everything in `testkit` refuses to run when `APP_ENV=production`.
 
