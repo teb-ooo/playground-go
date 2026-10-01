@@ -18,6 +18,9 @@ type User struct {
 	Username string
 	Picture  string
 	Groups   []string
+	// Scopes are the granted scopes ("notes:read") of a platform API key or a
+	// scoped OAuth token. Empty for sessions. See ScopesEnforced for when they apply.
+	Scopes []string
 }
 
 // IsAdmin reports whether the user belongs to the admin group.
@@ -46,6 +49,9 @@ const (
 	CredentialBearer Credential = "bearer"
 	// CredentialToken is a personal access token (see WithTokenVerifier).
 	CredentialToken Credential = "token"
+	// CredentialKey is a platform API key (pk_..., see package keys). Its
+	// scopes are always enforced.
+	CredentialKey Credential = "key"
 )
 
 type credKey struct{}

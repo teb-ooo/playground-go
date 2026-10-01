@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/teb-ooo/playground-go/surface"
 )
 
 // rejection describes a bearer credential that was presented but refused.
@@ -28,25 +30,22 @@ var (
 func (a *Auth) identify(r *http.Request) (u User, cred Credential, rej *rejection) {
 	if h := r.Header.Get("Authorization"); len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
 		tok := strings.TrimSpace(h[7:])
-		if a.tokenVerifier != nil && strings.HasPrefix(tok, PATPrefix) {
-			// A personal access token is never handed to the OIDC path.
-			switch tu, ok, err := a.tokenVerifier(r, tok); {
-			case err == nil && ok:
-				return tu, CredentialToken, nil
-			case err == nil:
-				rej = rejectInvalid
-			default:
-				var rl *RateLimitedError
-				if errors.As(err, &rl) {
-					rej = &rejection{status: http.StatusTooManyRequests, title: "Too Many Requests",
-						detail: "Too many failed attempts. Try again later.", retryAfter: retrySeconds(rl)}
-				} else {
-					// The error is not shown to the caller and never carries the token.
-					slog.Error("auth: token verifier failed", "error", err)
-					rej = rejectBackend
-				}
+		switch {
+		case a.keyVerifier != nil && strings.HasPrefix(tok, KeyPrefix):
+			// A platform key is never handed to the OIDC path.
+			if ku, rj := a.runVerifier(a.keyVerifier, r, tok); rj == nil {
+				return ku, CredentialKey, nil
+			} else {
+				rej = rj
 			}
-		} else {
+		case a.tokenVerifier != nil && strings.HasPrefix(tok, PATPrefix):
+			// A personal access token is never handed to the OIDC path.
+			if tu, rj := a.runVerifier(a.tokenVerifier, r, tok); rj == nil {
+				return tu, CredentialToken, nil
+			} else {
+				rej = rj
+			}
+		default:
 			if bu, err := a.verifyBearer(r.Context(), tok); err == nil {
 				return bu, CredentialBearer, nil
 			}
@@ -59,6 +58,42 @@ func (a *Auth) identify(r *http.Request) (u User, cred Credential, rej *rejectio
 		}
 	}
 	return User{}, "", rej
+}
+
+// runVerifier runs a token or key verifier and maps its outcome to a rejection.
+func (a *Auth) runVerifier(v TokenVerifier, r *http.Request, tok string) (User, *rejection) {
+	u, ok, err := v(r, tok)
+	switch {
+	case err == nil && ok:
+		return u, nil
+	case err == nil:
+		return User{}, rejectInvalid
+	}
+	var rl *RateLimitedError
+	var un *UnavailableError
+	switch {
+	case errors.As(err, &rl):
+		return User{}, &rejection{status: http.StatusTooManyRequests, title: "Too Many Requests",
+			detail: "Too many failed attempts. Try again later.", retryAfter: retrySeconds(rl)}
+	case errors.As(err, &un):
+		return User{}, rejectBackend
+	}
+	// The error is not shown to the caller and never carries the token.
+	slog.Error("auth: token verifier failed", "error", err)
+	return User{}, rejectBackend
+}
+
+// identified records who the caller is in the request context: the user, the
+// credential, the app name (for short scope names) and, for a platform key,
+// the AI-caller surface.
+func (a *Auth) identified(r *http.Request, u User, cred Credential) *http.Request {
+	ctx := WithApp(WithCredential(WithUser(r.Context(), u), cred), a.appName)
+	if cred == CredentialKey {
+		if s := surface.From(ctx); !s.IsAI() {
+			ctx = surface.With(ctx, surface.Key)
+		}
+	}
+	return r.WithContext(ctx)
 }
 
 func retrySeconds(e *RateLimitedError) int {
@@ -75,7 +110,7 @@ func retrySeconds(e *RateLimitedError) int {
 func (a *Auth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if u, cred, _ := a.identify(r); cred != "" {
-			r = r.WithContext(WithCredential(WithUser(r.Context(), u), cred))
+			r = a.identified(r, u, cred)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -104,7 +139,7 @@ func (a *Auth) BearerOrSession(next http.Handler) http.Handler {
 			return
 		}
 		if cred != "" {
-			r = r.WithContext(WithCredential(WithUser(r.Context(), u), cred))
+			r = a.identified(r, u, cred)
 		}
 		next.ServeHTTP(w, r)
 	})

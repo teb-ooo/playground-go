@@ -52,6 +52,8 @@ type Auth struct {
 	bearer   *bearerCache
 
 	tokenVerifier TokenVerifier
+	keyVerifier   TokenVerifier
+	appName       string
 
 	owner      string
 	rl         ratelimit.Options
@@ -138,6 +140,9 @@ func New(cfg OIDCConfig, sessionKey []byte, opts ...Option) (*Auth, error) {
 	for _, o := range opts {
 		o(a)
 	}
+	if a.keyVerifier != nil && a.appName == "" {
+		return nil, errNoApp
+	}
 	a.bearer = newBearerCache(a.now)
 	if !a.noRL {
 		if a.rl.Now == nil {
@@ -184,6 +189,9 @@ func (a *Auth) Register(api huma.API, mux *http.ServeMux) {
 	mux.Handle("GET /auth/callback", a.limited(a.callbackRL, a.handleCallback))
 	mux.HandleFunc("GET /auth/logout", a.handleLogout)
 	mux.HandleFunc("POST /auth/logout", a.handleLogout)
+	if a.appName != "" {
+		ScopeMiddleware(api, a.appName)
+	}
 	registerMe(api, a.owner)
 }
 

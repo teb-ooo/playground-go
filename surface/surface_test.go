@@ -17,7 +17,7 @@ func TestFromDefaultsToAPIAndWithOverrides(t *testing.T) {
 	if got := surface.From(surface.With(surface.With(ctx, surface.UI), surface.MCP)); got != surface.MCP {
 		t.Fatalf("got %q", got)
 	}
-	if !surface.MCP.IsAI() || !surface.Assistant.IsAI() || surface.UI.IsAI() || surface.API.IsAI() {
+	if !surface.MCP.IsAI() || !surface.Assistant.IsAI() || !surface.Key.IsAI() || surface.UI.IsAI() || surface.API.IsAI() {
 		t.Fatal("IsAI wrong")
 	}
 }

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -99,13 +100,16 @@ func (a *Auth) verifyBearer(ctx context.Context, tok string) (User, error) {
 		if err != nil {
 			return User{}, errBearer
 		}
+		scopes := scopesFromClaims(idt.Claims)
 		if info, err := p.UserInfo(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: tok, TokenType: "Bearer"})); err == nil && info.Subject == user.Subject {
 			if enriched, err := userFromClaims(info.Subject, info.Claims); err == nil {
 				user = enriched
 			}
+			user.Scopes = scopes
 		} else {
 			// Could not enrich: serve the request with the token's own claims
 			// but do not cache, so the next request retries userinfo.
+			user.Scopes = scopes
 			return user, nil
 		}
 	} else {
@@ -120,4 +124,30 @@ func (a *Auth) verifyBearer(ctx context.Context, tok string) (User, error) {
 	}
 	a.bearer.put(tok, user, exp)
 	return user, nil
+}
+
+// scopesFromClaims reads the granted scopes of a JWT access token. Hydra puts
+// them in "scp" (an array; some issuers use a space separated string, or the
+// RFC 9068 "scope" string). Only app scopes ("<app>:read|write|admin") are
+// kept; nil means the token carries none and is unrestricted (see
+// ScopesEnforced).
+func scopesFromClaims(claims claimsFunc) []string {
+	var c struct {
+		Scp   json.RawMessage `json:"scp"`
+		Scope string          `json:"scope"`
+	}
+	if claims(&c) != nil {
+		return nil
+	}
+	var all []string
+	var arr []string
+	var str string
+	switch {
+	case json.Unmarshal(c.Scp, &arr) == nil && arr != nil:
+		all = arr
+	case json.Unmarshal(c.Scp, &str) == nil && str != "":
+		all = strings.Fields(str)
+	}
+	all = append(all, strings.Fields(c.Scope)...)
+	return appScopes(all)
 }

@@ -14,7 +14,8 @@
 //	})
 //
 // The values are UI (a browser session), API (any other direct HTTP caller,
-// for example a script with a bearer token), MCP (a tool call made through
+// for example a script with a bearer token), Key (a direct HTTP caller
+// authenticated by a platform API key, set by the auth package and AI like MCP), MCP (a tool call made through
 // openapimcp) and Assistant (a tool call made by the assistant package).
 // From never fails: a context nobody marked reads as API.
 //
@@ -56,6 +57,9 @@ const (
 	API       Surface = "api"
 	MCP       Surface = "mcp"
 	Assistant Surface = "assistant"
+	// Key is a direct HTTP call authenticated by a platform API key (pk_...):
+	// an automation or AI caller. Set by the auth package, never by a client.
+	Key Surface = "key"
 )
 
 // Header is the name of a header that clients might send to claim a surface.
@@ -79,8 +83,8 @@ func From(ctx context.Context) Surface {
 }
 
 // IsAI reports whether the request was made by an AI on the user's behalf
-// (MCP or Assistant).
-func (s Surface) IsAI() bool { return s == MCP || s == Assistant }
+// (MCP, Assistant, or a direct call with a platform API key).
+func (s Surface) IsAI() bool { return s == MCP || s == Assistant || s == Key }
 
 // String implements fmt.Stringer.
 func (s Surface) String() string { return string(s) }

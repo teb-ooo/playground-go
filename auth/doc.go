@@ -25,6 +25,30 @@
 // token); RequireSession admits only a browser session, for operations that
 // manage credentials.
 //
+// Platform API keys: WithKeyVerifier plugs in the keys package's verifier for
+// bearer tokens that start with KeyPrefix ("pk_"); playground.Config.NewAuth
+// installs it by default (with WithAppName). The credential is CredentialKey.
+//
+// Scopes ("<app>:read", "<app>:write", "<app>:admin", User.Scopes) restrict
+// machine credentials only:
+//
+//	session (browser)         never restricted
+//	key (pk_...)              always restricted to its scopes; no scopes, no access;
+//	                          admin does not bypass (admin operations need the
+//	                          admin group claim AND the <app>:admin scope)
+//	bearer (OIDC/Hydra JWT)   restricted only when its scp (array or string) or
+//	                          scope claim holds app scopes; openid/email/profile
+//	                          only, or no claim, stays unrestricted
+//	token (pat_, legacy)      restricted only if the verifier returned Scopes
+//	                          (apitoken does not)
+//
+// ScopesEnforced says which applies; ScopeMiddleware (installed by Register,
+// before the operations are registered) checks each operation that has a
+// Security requirement: read for GET and HEAD, write otherwise, or the
+// Extensions "x-scope" value; a missing scope is a 403 problem naming it.
+// Handlers call RequireScope(ctx, "admin"). A verifier that cannot decide
+// (the key revocation list is unreachable) returns *UnavailableError: 503.
+//
 // Middleware never rejects; operations that need a user call Require, which
 // yields a 401 problem+json through Huma.
 package auth
