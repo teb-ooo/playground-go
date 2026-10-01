@@ -710,3 +710,38 @@ func tamperMiddle(s string) string {
 	}
 	return string(b)
 }
+
+func TestMeOptionalAnonymous(t *testing.T) {
+	a, err := auth.New(auth.OIDCConfig{Issuer: "https://oidc.example", ClientID: "c", PublicURL: "https://app.example"}, bytes.Repeat([]byte{1}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("t", "1"))
+	a.Register(api, mux)
+	h := a.Middleware(mux)
+	for _, tc := range []struct {
+		url  string
+		code int
+		body string
+	}{
+		{"/auth/me", 401, ""},
+		{"/auth/me?optional=1", 200, `"anonymous":true`},
+		{"/auth/me?optional=0", 401, ""},
+	} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", tc.url, nil))
+		if w.Code != tc.code || (tc.body != "" && !strings.Contains(w.Body.String(), tc.body)) {
+			t.Errorf("%s: %d %s", tc.url, w.Code, w.Body)
+		}
+	}
+	// a signed-in person gets the normal answer with optional=1, without anonymous
+	cookie, _ := testkit.MintSession(bytes.Repeat([]byte{1}, 32), auth.User{Subject: "u", Email: "ada@teb.ooo"})
+	r := httptest.NewRequest("GET", "/auth/me?optional=1", nil)
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 || strings.Contains(w.Body.String(), "anonymous") || !strings.Contains(w.Body.String(), `"email":"ada@teb.ooo"`) {
+		t.Errorf("signed in: %d %s", w.Code, w.Body)
+	}
+}
