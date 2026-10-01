@@ -160,3 +160,22 @@ func TestAssistantFlag(t *testing.T) {
 		})
 	}
 }
+
+func TestPlatformDomainInjected(t *testing.T) {
+	site := fstest.MapFS{"index.html": {Data: []byte("<head></head>")}}
+	for _, tc := range []struct{ name, env, cfg, want string }{
+		{"config", "", "teb.ooo", `"platform_domain":"teb.ooo"`},
+		{"env", "example.test", "", `"platform_domain":"example.test"`},
+		{"unset", "", "", `"platform_domain":""`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("PLAYGROUND_DOMAIN", tc.env)
+			h := spa.Handler(site, spa.Config{PlatformDomain: tc.cfg, SessionURLFile: "/nonexistent"})
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest("GET", "/playground.js", nil))
+			if !strings.Contains(w.Body.String(), tc.want) {
+				t.Fatalf("got %s, want %s", w.Body.String(), tc.want)
+			}
+		})
+	}
+}

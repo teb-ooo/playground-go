@@ -218,7 +218,7 @@ func (c Config) AssistantEnabled() bool { return c.AnthropicAPIKey != "" }
 // SPA returns the spa.Config for this app: name, environment and the assistant
 // flag. Locale and timezone come from PLAYGROUND_LOCALE and PLAYGROUND_TIMEZONE.
 func (c Config) SPA() spa.Config {
-	return spa.Config{AppName: c.AppName, Env: c.Env, Assistant: c.Assistant}
+	return spa.Config{AppName: c.AppName, Env: c.Env, Assistant: c.Assistant, PlatformDomain: c.PlaygroundDomain}
 }
 
 // NewAuth builds the auth package's Auth from the config.

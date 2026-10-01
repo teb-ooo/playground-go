@@ -1,7 +1,7 @@
 // Package spa serves an embedded single-page app: it serves files from an
 // fs.FS, falls back to index.html for unknown paths, and injects
 // window.__PLAYGROUND__ (app_name, env, claude_session_url, locale,
-// timezone, assistant) so the frontend knows where it runs. The statement is
+// timezone, assistant, platform_domain) so the frontend knows where it runs. The statement is
 // served at /playground.js and index.html loads it with a classic script tag in
 // <head>: the site's Content-Security-Policy (script-src 'self') blocks inline
 // scripts, so it cannot be injected inline.
@@ -36,6 +36,9 @@ type Config struct {
 	// (default UTC); the web package's fmt helpers format with them.
 	Locale   string
 	Timezone string
+	// PlatformDomain is the platform's domain (teb.ooo), injected as platform_domain so the platform shell builds links to the
+	// other platform apps (id, ah, bd, ui) without guessing it from the host. Default PLAYGROUND_DOMAIN; empty when unset.
+	PlatformDomain string
 	// SessionURLFile is read on every index.html request; default
 	// DefaultSessionURLFile. A missing file means an empty claude_session_url.
 	SessionURLFile string
@@ -59,6 +62,9 @@ func Handler(fsys fs.FS, cfg ...Config) http.Handler {
 	}
 	if c.Timezone == "" {
 		c.Timezone = envOr("PLAYGROUND_TIMEZONE", "UTC")
+	}
+	if c.PlatformDomain == "" {
+		c.PlatformDomain = envOr("PLAYGROUND_DOMAIN", "")
 	}
 	if c.SessionURLFile == "" {
 		c.SessionURLFile = DefaultSessionURLFile
@@ -85,7 +91,7 @@ func (h *handler) playgroundScript() []byte {
 	}
 	data, _ := json.Marshal(map[string]any{
 		"app_name": h.cfg.AppName, "env": h.cfg.Env, "claude_session_url": session,
-		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "assistant": h.cfg.Assistant,
+		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "assistant": h.cfg.Assistant, "platform_domain": h.cfg.PlatformDomain,
 	})
 	return append(append([]byte("window.__PLAYGROUND__ = "), data...), ';')
 }
