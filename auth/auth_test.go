@@ -75,7 +75,7 @@ func TestSessionCookie(t *testing.T) {
 		{"valid", testKey, c.Value, now, true},
 		{"expired", testKey, c.Value, now.Add(2 * time.Hour), false},
 		{"wrong key", []byte("ffffffffffffffffffffffffffffffff"), c.Value, now, false},
-		{"tampered", testKey, c.Value[:len(c.Value)-2] + "AA", now, false},
+		{"tampered", testKey, tamperMiddle(c.Value), now, false},
 		{"garbage", testKey, "!!!", now, false},
 		{"empty", testKey, "", now, false},
 	}
@@ -696,4 +696,17 @@ func TestMeReportsOwner(t *testing.T) {
 			}
 		})
 	}
+}
+
+// tamperMiddle changes one character in the middle of the value, always to a different one (appending "AA" to the end could
+// leave the last base64 characters unchanged and made the test flaky).
+func tamperMiddle(s string) string {
+	b := []byte(s)
+	i := len(b) / 2
+	if b[i] == 'A' {
+		b[i] = 'B'
+	} else {
+		b[i] = 'A'
+	}
+	return string(b)
 }
