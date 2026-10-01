@@ -1,4 +1,4 @@
-// Package live is the server half of rule WEB-50: one server-sent-events stream per app, GET /api/live, that tells
+// Package live is the server half of rule UI-7: one server-sent-events stream per app, GET /api/live, that tells
 // every open screen "this resource changed" so it refetches through the normal API.
 //
 // An event carries no data, only a resource name (and optionally a project and an id that narrow a detail query):
