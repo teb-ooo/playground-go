@@ -53,6 +53,7 @@ Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth
 | `openapimcp` | One MCP tool per OpenAPI operation, executed in-process with the caller's credentials forwarded. `Handler`, `New`, `Tools()`, `ParityCheck`. |
 | `auth` | OIDC code flow with PKCE, state and nonce; encrypted session cookie; bearer tokens; `Require`, `RequireAdmin`, `User`. |
 | `ratelimit` | In-memory token bucket for net/http and Huma, keyed by client IP (last `X-Forwarded-For` hop from a trusted proxy) and an optional extra key. |
+| `live` | Rule WEB-50, the server half: `Hub` (`Publish(resource, audience)` after a write, never blocks, per-subscriber coalescing), audiences (`Everyone`, `Subject`, `Admins`, `Project`), `Mount(mux, hub)` for `GET /api/live` (SSE: `: live`, `change`, `degraded`, `: ping` every 25 s, 1 h lifetime, 8 streams per person, 401/429 problem+json), and `Relay` for an upstream stream such as playd's `/v1/work/events`. Not a Huma operation. |
 | `health` | `GET /healthz` returning `{version, env, db, uptime_seconds}`. |
 | `log` | slog JSON to stdout, request middleware, redaction of `*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD` values. |
 | `assistant` | The end-user assistant: tool-use loop over the app's own API as the signed-in user, SSE replies, `Store` interface with `PgxStore` and `MemoryStore`. Migration SQL in `assistant/migrations/`. |
