@@ -19,4 +19,10 @@
 // If a path or query parameter is itself called "body" the operation cannot be
 // represented unambiguously and construction fails with an error. Schemas
 // that reference components are made self-contained under "$defs".
+//
+// # Surface marker
+//
+// Every tool call runs with surface.With(ctx, surface.MCP) on the context of
+// the in-process request, so an operation handler can tell an MCP caller from
+// a browser with surface.From(ctx). See package surface.
 package openapimcp

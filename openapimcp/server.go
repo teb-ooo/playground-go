@@ -7,6 +7,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/teb-ooo/playground-go/surface"
 )
 
 // Options configures the MCP server.
@@ -73,7 +75,9 @@ func New(api huma.API, app http.Handler, opts Options) (*Server, error) {
 				if req.Extra != nil {
 					hdr = req.Extra.Header
 				}
-				res, err := t.Call(ctx, dispatch, hdr, req.Params.Arguments)
+				// Server-side marker: the dispatched request's context says "mcp",
+				// whatever the client sent (see package surface).
+				res, err := t.Call(surface.With(ctx, surface.MCP), dispatch, hdr, req.Params.Arguments)
 				if err != nil {
 					return &mcp.CallToolResult{
 						IsError: true,

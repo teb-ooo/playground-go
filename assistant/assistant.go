@@ -21,6 +21,7 @@ import (
 	"github.com/teb-ooo/playground-go/internal/problem"
 	"github.com/teb-ooo/playground-go/internal/uuidv7"
 	"github.com/teb-ooo/playground-go/openapimcp"
+	"github.com/teb-ooo/playground-go/surface"
 )
 
 // Defaults.
@@ -585,7 +586,9 @@ func (a *Assistant) executeTools(ctx context.Context, out *sse, hdr http.Header,
 		case !known:
 			content, isErr = fmt.Sprintf("unknown tool %q", tu.Name), true
 		default:
-			res, err := a.ts.Call(ctx, a.app, hdr, opID, input)
+			// Server-side surface marker: the context of the dispatched request says
+			// "assistant" whatever the outer request was (see package surface).
+			res, err := a.ts.Call(surface.With(ctx, surface.Assistant), a.app, hdr, opID, input)
 			switch {
 			case err != nil:
 				content, isErr = err.Error(), true

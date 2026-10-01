@@ -94,6 +94,11 @@ func itoa(i int) string { b, _ := json.Marshal(i); return string(b) }
 
 func connect(t *testing.T, h http.Handler, hdr http.Header) *mcp.ClientSession {
 	t.Helper()
+	return connectAt(t, h, "", hdr)
+}
+
+func connectAt(t *testing.T, h http.Handler, path string, hdr http.Header) *mcp.ClientSession {
+	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	c := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "1"}, nil)
@@ -103,7 +108,7 @@ func connect(t *testing.T, h http.Handler, hdr http.Header) *mcp.ClientSession {
 		}
 		return http.DefaultTransport.RoundTrip(r)
 	})
-	s, err := c.Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: srv.URL, HTTPClient: &http.Client{Transport: rt}}, nil)
+	s, err := c.Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: srv.URL + path, HTTPClient: &http.Client{Transport: rt}}, nil)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
