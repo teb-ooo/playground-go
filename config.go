@@ -7,7 +7,6 @@ package playground
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/url"
 	"os"
@@ -220,15 +219,13 @@ func (c Config) NewAuth(opts ...auth.Option) (*auth.Auth, error) {
 	return auth.New(c.OIDC, c.SessionKey, opts...)
 }
 
-// NewMailer builds the mailer, with app templates from templates (may be nil).
-// It returns an error if mail is not configured.
-func (c Config) NewMailer(templates fs.FS) (*mail.Mailer, error) {
+// NewMailer builds the mailer (transport only; the app renders its own email
+// bodies). It returns an error if mail is not configured.
+func (c Config) NewMailer() (*mail.Mailer, error) {
 	if c.Mail.Provider == "" {
 		return nil, errors.New("playground: mail is not configured (MAIL_PROVIDER is empty)")
 	}
-	m := c.Mail
-	m.Templates = templates
-	return mail.New(m)
+	return mail.New(c.Mail)
 }
 
 // AssistantOptions returns assistant options from the config, using store.

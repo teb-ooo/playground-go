@@ -1,18 +1,17 @@
-// Package mail is the only way playground components send email. It speaks the
-// HTTP APIs of Resend and Postmark, renders text and HTML pairs from Go
-// templates layered on an embedded base layout, and on staging rewrites every
-// recipient to MAIL_STAGING_SINK and prefixes the subject with
-// "[staging <app>]" so agents can exercise email without reaching real
-// people. Message bodies are never logged.
+// Package mail is the only way playground components send email, and it is
+// transport only. It speaks the HTTP APIs of Resend and Postmark and sends the
+// Message it is given: recipients, subject, and a plain text and/or HTML body.
+// On staging it rewrites every recipient to MAIL_STAGING_SINK and prefixes the
+// subject with "[staging <app>]" so agents can exercise email without reaching
+// real people. Message bodies are never logged.
 //
-// # Templates
+// # Templates belong to the app
 //
-// The base layout (templates/base.html.tmpl and templates/base.txt.tmpl) is
-// owned by the @teb-ooo/ui package's email/ directory; playground-go embeds a
-// copy so the Go binary builds without npm. Placeholder contract: the base
-// uses {{.Title}}, {{.Preheader}}, {{.PlaygroundName}}, {{.Footer}} and
-// {{template "content" .}}. An app template <name>.html.tmpl and
-// <name>.txt.tmpl (in the fs.FS given as Config.Templates, usually the
-// app's internal/mail/ directory) defines "content"; inside it the app's own
-// data is available as .Data.
+// This package has no layout, no template engine and no wordmark: from v0.4.0
+// the embedded base layout is gone. Each app owns its email templates as
+// complete text and HTML documents in its own repository (for example
+// internal/mail/), renders them with its own code (text/template and
+// html/template) and passes the results to Mailer.Send as Message.Text and
+// Message.HTML. Send at least a text body; add HTML only if the email needs
+// an action button.
 package mail

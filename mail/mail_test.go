@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"testing/fstest"
 
 	"github.com/teb-ooo/playground-go/mail"
 )
@@ -216,81 +215,5 @@ func TestNeverLogsBodies(t *testing.T) {
 		if strings.Contains(out, s) {
 			t.Errorf("log leaks %q: %s", s, out)
 		}
-	}
-}
-
-var appTemplates = fstest.MapFS{
-	"invite.html.tmpl":   {Data: []byte(`{{define "content"}}<p>Hello {{.Data.Name}}, <a href="{{.Data.URL}}">set up your passkey</a>.</p>{{end}}`)},
-	"invite.txt.tmpl":    {Data: []byte(`{{define "content"}}Hello {{.Data.Name}}, set up your passkey: {{.Data.URL}}{{end}}`)},
-	"broken.html.tmpl":   {Data: []byte(`{{define "content"}}{{.Data.Nope.Deeper}}{{end}}`)},
-	"broken.txt.tmpl":    {Data: []byte(`{{define "content"}}x{{end}}`)},
-	"htmlonly.html.tmpl": {Data: []byte(`{{define "content"}}x{{end}}`)},
-}
-
-func TestTemplate(t *testing.T) {
-	srv, got := fakeProvider(t, 200, `{}`)
-	cfg := base(srv, "resend", "production")
-	cfg.Templates = appTemplates
-	m, err := mail.New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	page := mail.Page{Title: "You are invited", Preheader: "Set up your passkey", Footer: "Sent by hello",
-		Data: map[string]string{"Name": "<Ada>", "URL": "https://id.teb.ooo/invite?flow=1&x=2"}}
-	text, html, err := m.Template("invite", page)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"<title>You are invited</title>", "Set up your passkey", "teb.ooo", "Sent by hello", `&lt;Ada&gt;`, `href="https://id.teb.ooo/invite?flow=1&amp;x=2"`} {
-		if !strings.Contains(html, want) {
-			t.Errorf("html missing %q", want)
-		}
-	}
-	if strings.Contains(html, "<Ada>") {
-		t.Error("html not escaped")
-	}
-	for _, want := range []string{"You are invited", "Hello <Ada>, set up your passkey: https://id.teb.ooo/invite?flow=1&x=2", "teb.ooo", "Sent by hello"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("text missing %q in %q", want, text)
-		}
-	}
-	if strings.Contains(text, "&lt;") || strings.Contains(text, "<html") {
-		t.Errorf("text must be plain: %q", text)
-	}
-
-	if err := m.SendTemplate(context.Background(), []string{"ada@teb.ooo"}, "", "invite", page); err != nil {
-		t.Fatal(err)
-	}
-	body := (*got)[0].body
-	if body["subject"] != "You are invited" || body["text"] == "" || body["html"] == "" {
-		t.Errorf("sent = %v", body)
-	}
-}
-
-func TestTemplateErrors(t *testing.T) {
-	srv, _ := fakeProvider(t, 200, `{}`)
-	cfg := base(srv, "resend", "production")
-	cfg.Templates = appTemplates
-	m, _ := mail.New(cfg)
-	tests := []struct{ name, tmpl string }{
-		{"missing", "nope"},
-		{"missing text half", "htmlonly"},
-		{"execution error", "broken"},
-		{"path traversal", "../secret"},
-		{"slash", "a/b"},
-		{"empty", ""},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if _, _, err := m.Template(tc.tmpl, mail.Page{Data: map[string]any{}}); err == nil {
-				t.Fatal("expected error")
-			}
-		})
-	}
-	// No app templates configured.
-	cfg.Templates = nil
-	m2, _ := mail.New(cfg)
-	if _, _, err := m2.Template("invite", mail.Page{}); err == nil {
-		t.Error("expected error without templates")
 	}
 }

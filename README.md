@@ -8,7 +8,7 @@ playground-go is the shared Go library every playground app is built on: it turn
 go vet ./... && go test ./... -race
 ```
 
-Two optional integration checks skip themselves unless configured: the Postgres store test (`PLAYGROUND_TEST_DATABASE_URL=postgres://postgres:x@127.0.0.1:55432/postgres`, a throwaway database, for example `docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=x postgres:17.11`) and the mail template drift check (`PLAYGROUND_UI_EMAIL_DIR=/srv/playground/lib/ui/email`). No test calls the real Anthropic API or any real mail provider; they use httptest fakes.
+One optional integration check skips itself unless configured: the Postgres store test (`PLAYGROUND_TEST_DATABASE_URL=postgres://postgres:x@127.0.0.1:55432/postgres`, a throwaway database, for example `docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=x postgres:17.11`). No test calls the real Anthropic API or any real mail provider; they use httptest fakes.
 
 ## Usage
 
@@ -50,7 +50,7 @@ Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth
 | `health` | `GET /healthz` returning `{version, env, db, uptime_seconds}`. |
 | `log` | slog JSON to stdout, request middleware, redaction of `*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD` values. |
 | `assistant` | The end-user assistant: tool-use loop over the app's own API as the signed-in user, SSE replies, `Store` interface with `PgxStore` and `MemoryStore`. Migration SQL in `assistant/migrations/`. |
-| `mail` | Resend and Postmark over HTTP, staging redirect to `MAIL_STAGING_SINK`, text and HTML templates on the base layout copied from `@teb-ooo/ui`. |
+| `mail` | Transport only: `Mailer.Send` over Resend or Postmark HTTP, staging redirect to `MAIL_STAGING_SINK` and the `[staging <app>]` subject prefix. No layout and no templates: each app owns its email templates (complete text and HTML documents in its own repo) and passes the rendered `Message` to `Send`. Breaking change in v0.4.0: `Templates`, `Page`, `SendTemplate`, `Config.Templates`, `Config.PlaygroundName` and the `NewMailer` argument are removed. |
 | `spa` | Serves an embedded `fs.FS`, falls back to `index.html`, serves `window.__PLAYGROUND__` at `/playground.js` (a script tag in index.html; the CSP forbids inline scripts) (`app_name`, `env`, `claude_session_url`, `locale`, `timezone`, `assistant`). `assistant` is a boolean from `spa.Config.Assistant` (`PLAYGROUND_ASSISTANT=true`, default false; use `cfg.SPA()`). |
 | `testkit` | Minted session cookies and Kratos sessions for staging and tests. |
 

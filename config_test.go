@@ -42,7 +42,7 @@ func TestFromEnvDefaults(t *testing.T) {
 	if _, err := c.NewAuth(); err != nil {
 		t.Errorf("NewAuth: %v", err)
 	}
-	if _, err := c.NewMailer(nil); err == nil {
+	if _, err := c.NewMailer(); err == nil {
 		t.Error("NewMailer without provider should fail")
 	}
 }
@@ -119,7 +119,7 @@ func TestMailAndAssistantWiring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.NewMailer(nil); err != nil {
+	if _, err := c.NewMailer(); err != nil {
 		t.Errorf("NewMailer: %v", err)
 	}
 	if !c.AssistantEnabled() {

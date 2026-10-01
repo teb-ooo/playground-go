@@ -3,24 +3,17 @@ package mail
 import (
 	"bytes"
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	htmltemplate "html/template"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	nmail "net/mail"
 	"os"
 	"strings"
-	texttemplate "text/template"
 	"time"
 )
-
-//go:embed templates/base.html.tmpl templates/base.txt.tmpl
-var baseFS embed.FS
 
 // Provider names.
 const (
@@ -55,10 +48,6 @@ type Config struct {
 	// StagingSink is the inbox every staging message is redirected to
 	// (MAIL_STAGING_SINK). Required outside production.
 	StagingSink string
-	// PlaygroundName is shown in the layout header; default PlaygroundDomain.
-	PlaygroundName string
-	// Templates holds the app's own templates; may be nil.
-	Templates fs.FS
 	// BaseURL overrides the provider endpoint (tests).
 	BaseURL string
 	// HTTPClient overrides the client (default: 15s timeout).
@@ -80,7 +69,6 @@ type Mailer struct {
 	cfg  Config
 	from string
 	prov provider
-	tpl  *Templates
 }
 
 // New validates cfg and returns a Mailer.
@@ -123,14 +111,7 @@ func New(cfg Config) (*Mailer, error) {
 	default:
 		return nil, fmt.Errorf("mail: unknown MAIL_PROVIDER %q (want resend or postmark)", cfg.Provider)
 	}
-	if cfg.PlaygroundName == "" {
-		cfg.PlaygroundName = cfg.PlaygroundDomain
-	}
-	tpl, err := NewTemplates(cfg.Templates, cfg.PlaygroundName)
-	if err != nil {
-		return nil, err
-	}
-	return &Mailer{cfg: cfg, from: from, prov: prov, tpl: tpl}, nil
+	return &Mailer{cfg: cfg, from: from, prov: prov}, nil
 }
 
 func orDefault(s, d string) string {
@@ -198,108 +179,6 @@ func (m *Mailer) prepare(msg Message) (outgoing, error) {
 		out.Subject = "[staging " + m.cfg.AppName + "] " + msg.Subject
 	}
 	return out, nil
-}
-
-// Template renders the app template name into a text and HTML pair. See the
-// package documentation for the template contract.
-func (m *Mailer) Template(name string, data Page) (text, html string, err error) {
-	r, err := m.tpl.Render(name, data)
-	return r.Text, r.HTML, err
-}
-
-// SendTemplate renders name with data and sends it to `to`, with data.Title
-// as the subject unless subject is non-empty.
-func (m *Mailer) SendTemplate(ctx context.Context, to []string, subject, name string, data Page) error {
-	text, html, err := m.Template(name, data)
-	if err != nil {
-		return err
-	}
-	if subject == "" {
-		subject = data.Title
-	}
-	return m.Send(ctx, Message{To: to, Subject: subject, Text: text, HTML: html})
-}
-
-// ---- templates ----
-
-// Page is the root data for a template: the base layout's placeholders plus
-// the app's own data under .Data.
-type Page struct {
-	Title          string
-	Preheader      string
-	PlaygroundName string // defaults to the Mailer's playground name
-	Footer         string
-	Data           any
-}
-
-// Rendered is a rendered text and HTML pair.
-type Rendered struct{ Text, HTML string }
-
-// Templates renders app templates on top of the embedded base layout.
-type Templates struct {
-	app            fs.FS
-	playgroundName string
-}
-
-// NewTemplates returns a renderer for app templates in appFS (may be nil, in
-// which case only the base layout is available and every Render fails).
-func NewTemplates(appFS fs.FS, playgroundName string) (*Templates, error) {
-	t := &Templates{app: appFS, playgroundName: playgroundName}
-	// Fail early if the embedded base does not parse.
-	if _, err := htmltemplate.New("base").ParseFS(baseFS, "templates/base.html.tmpl"); err != nil {
-		return nil, fmt.Errorf("mail: parsing base HTML layout: %w", err)
-	}
-	if _, err := texttemplate.New("base").ParseFS(baseFS, "templates/base.txt.tmpl"); err != nil {
-		return nil, fmt.Errorf("mail: parsing base text layout: %w", err)
-	}
-	return t, nil
-}
-
-// Render renders <name>.html.tmpl and <name>.txt.tmpl from the app FS, each on
-// top of its base layout. Both must define "content".
-func (t *Templates) Render(name string, data Page) (Rendered, error) {
-	if t.app == nil {
-		return Rendered{}, errors.New("mail: no application templates configured")
-	}
-	if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
-		return Rendered{}, fmt.Errorf("mail: invalid template name %q", name)
-	}
-	if data.PlaygroundName == "" {
-		data.PlaygroundName = t.playgroundName
-	}
-
-	htmlSrc, err := fs.ReadFile(t.app, name+".html.tmpl")
-	if err != nil {
-		return Rendered{}, fmt.Errorf("mail: reading %s.html.tmpl: %w", name, err)
-	}
-	textSrc, err := fs.ReadFile(t.app, name+".txt.tmpl")
-	if err != nil {
-		return Rendered{}, fmt.Errorf("mail: reading %s.txt.tmpl: %w", name, err)
-	}
-
-	ht, err := htmltemplate.New("base.html.tmpl").Option("missingkey=error").ParseFS(baseFS, "templates/base.html.tmpl")
-	if err != nil {
-		return Rendered{}, fmt.Errorf("mail: parsing base HTML layout: %w", err)
-	}
-	if _, err := ht.New(name + ".html.tmpl").Parse(string(htmlSrc)); err != nil {
-		return Rendered{}, fmt.Errorf("mail: parsing %s.html.tmpl: %w", name, err)
-	}
-	tt, err := texttemplate.New("base.txt.tmpl").Option("missingkey=error").ParseFS(baseFS, "templates/base.txt.tmpl")
-	if err != nil {
-		return Rendered{}, fmt.Errorf("mail: parsing base text layout: %w", err)
-	}
-	if _, err := tt.New(name + ".txt.tmpl").Parse(string(textSrc)); err != nil {
-		return Rendered{}, fmt.Errorf("mail: parsing %s.txt.tmpl: %w", name, err)
-	}
-
-	var hb, tb bytes.Buffer
-	if err := ht.ExecuteTemplate(&hb, "base.html.tmpl", data); err != nil {
-		return Rendered{}, fmt.Errorf("mail: rendering %s HTML: %w", name, err)
-	}
-	if err := tt.ExecuteTemplate(&tb, "base.txt.tmpl", data); err != nil {
-		return Rendered{}, fmt.Errorf("mail: rendering %s text: %w", name, err)
-	}
-	return Rendered{Text: tb.String(), HTML: hb.String()}, nil
 }
 
 // ---- providers ----
