@@ -126,9 +126,37 @@ func TestContractSchemaFailures(t *testing.T) {
 	expect(t, runContract[camel](goodOp()), `property "userName" is not snake_case`, "user_name", "response 200")
 	expect(t, runContract[nested](goodOp()), `property "userName" is not snake_case`)
 	expect(t, runContract[badTime](goodOp()), `timestamp property "created_at"`, "date-time")
-	expect(t, runContract[badID](goodOp()), `id property "id"`, "uuid")
+	expect(t, runContract[badID](goodOp()), `id property "id"`, "neither format nor pattern", `format:"uuid"`, "pattern", "WithExempt", "docs/go-api.md")
 	expect(t, runContract[badRefID](goodOp()), `id property "user_id"`)
-	expect(t, runContract[intID](goodOp()), `id property "id"`)
+	expect(t, runContract[intID](goodOp()), `id property "id"`, "not a string", "WithExempt")
+}
+
+func TestContractIDRule(t *testing.T) {
+	type uuidID struct {
+		ID string `json:"id" format:"uuid"`
+	}
+	type patternID struct {
+		ID string `json:"id" pattern:"^[a-z]+-[a-z0-9.]+$"`
+	}
+	type formatID struct {
+		JobID string `json:"job_id" format:"hostname"`
+	}
+	type bare struct {
+		ID string `json:"id"`
+	}
+	type integer struct {
+		ID int64 `json:"id"`
+	}
+	expect(t, runContract[uuidID](goodOp()))
+	expect(t, runContract[patternID](goodOp()))
+	expect(t, runContract[formatID](goodOp()))
+	expect(t, runContract[bare](goodOp()), "neither format nor pattern")
+	expect(t, runContract[integer](goodOp()), "not a string")
+
+	exempt := goodOp()
+	exempt.Extensions = map[string]any{openapimcp.ExemptExtension: "audit entry ids are database sequence numbers"}
+	expect(t, runContract[integer](exempt))
+	expect(t, runContract[bare](goodOp(), openapimcp.WithExempt("list-widgets")))
 }
 
 func TestContractRequestBodyChecked(t *testing.T) {

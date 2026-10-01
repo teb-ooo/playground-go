@@ -24,7 +24,7 @@ type parityConfig struct {
 }
 
 // WithExempt exempts the named operation ids from the contract checks (OperationID form, Path, Summary,
-// Description, Tags, Security, snake_case properties, date-time and uuid formats). It is the documented way to
+// Description, Tags, Security, snake_case properties, date-time format and id rule). It is the documented way to
 // accept a known exception, for example a protocol ceremony whose wire shape is not ours. The id-to-tool
 // equality check still runs. Prefer the per-operation Extension ExemptExtension, which keeps the reason next to
 // the operation.
@@ -71,7 +71,8 @@ func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 //	(b) every operation has a non-empty Summary and Description, and
 //	(c) the API contract of docs/go-api.md holds, see checkContract: kebab-case verb-noun OperationID, Method,
 //	    Path under /api/, Tags, Security covering session and bearer, snake_case request and response property
-//	    names, date-time format on timestamps (names ending _at) and uuid format on ids (id, *_id).
+//	    names, date-time format on timestamps (names ending _at) and ids (id, *_id) that are strings with format uuid (ids the app
+//	generates), or with another format or a pattern (ids it does not generate); integer ids need an exemption.
 //
 // Operations can be exempted from (b) and (c) with WithExempt or the ExemptExtension Extension.
 func ParityCheck(t testing.TB, api huma.API, mcpHandler http.Handler, opts ...ParityOption) {
@@ -227,11 +228,8 @@ func checkSchema(api huma.API, s *huma.Schema, where, name string, seen map[*hum
 			fail(fmt.Sprintf("%s property %q is not snake_case", where, n), fmt.Sprintf(`change its json tag to %q`, toSnake(n)))
 		}
 		if pr := resolve(api, p); pr != nil {
-			if (n == "id" || strings.HasSuffix(n, "_id")) && pr.Type == "string" && pr.Format != "uuid" {
-				fail(fmt.Sprintf("%s id property %q has format %q, not uuid", where, n, pr.Format), `add the struct tag format:"uuid" (ids are UUIDv7 strings)`)
-			}
-			if (n == "id" || strings.HasSuffix(n, "_id")) && pr.Type != "string" && pr.Type != "" && pr.Type != "array" {
-				fail(fmt.Sprintf("%s id property %q has type %q, not a uuid string", where, n, pr.Type), `make it a string with format:"uuid"`)
+			if n == "id" || strings.HasSuffix(n, "_id") {
+				checkID(pr, where, n, fail)
 			}
 			if timestampN.MatchString(n) && pr.Format != "date-time" && pr.Type != "array" && pr.Type != "object" {
 				fail(fmt.Sprintf("%s timestamp property %q has format %q, not date-time", where, n, pr.Format), "use time.Time (RFC 3339 UTC) or the struct tag format:\"date-time\"")
@@ -247,6 +245,26 @@ func checkSchema(api huma.API, s *huma.Schema, where, name string, seen map[*hum
 		for _, g := range group {
 			checkSchema(api, g, where, name, seen, fail)
 		}
+	}
+}
+
+// idFix explains every way to satisfy the id rule.
+const idFix = `ids the app generates: add the struct tag format:"uuid" (UUIDv7 strings); ids it does not generate (bead ids, external ids): ` +
+	`declare format:"<name>" or pattern:"<regexp>" so the shape is documented; anything else (integer ids): exempt the operation ` +
+	`with openapimcp.WithExempt or the ExemptExtension and a reason`
+
+// checkID applies the id rule to a property named id or *_id. A string is accepted with format uuid, with any
+// other explicit format, or with a pattern; a bare string and any number or integer are rejected. Arrays and
+// untyped schemas are left to their items.
+func checkID(pr *huma.Schema, where, name string, fail func(problem, fix string)) {
+	switch pr.Type {
+	case "string":
+		if pr.Format == "" && pr.Pattern == "" {
+			fail(fmt.Sprintf("%s id property %q is a string with neither format nor pattern", where, name), idFix)
+		}
+	case "", "array":
+	default:
+		fail(fmt.Sprintf("%s id property %q has type %q, not a string", where, name, pr.Type), idFix)
 	}
 }
 
