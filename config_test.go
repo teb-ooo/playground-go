@@ -3,6 +3,8 @@ package playground_test
 import (
 	"bytes"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -175,5 +177,40 @@ func TestPlaygroundAssistantFlag(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewAuthAcceptsPlatformKeysByDefault(t *testing.T) {
+	c, err := playground.FromEnv(env(map[string]string{"PLAYGROUND_DOMAIN": "keys.invalid"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := c.NewAuth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A well-formed pk_ token goes to the keys verifier, not the OIDC path: the issuer's
+	// key endpoint cannot be reached here, which is a 503 (the OIDC path
+	// would answer 401).
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Bearer pk_eyJhbGciOiJFUzI1NiIsImtpZCI6IngifQ.e30.AAAA")
+	w := httptest.NewRecorder()
+	a.BearerOrSession(http.NotFoundHandler()).ServeHTTP(w, r)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d", w.Code)
+	}
+	// Without a domain no verifier is installed.
+	c, _ = playground.FromEnv(env(nil, "PLAYGROUND_DOMAIN"))
+	if _, err := c.NewAuth(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMCPOptions(t *testing.T) {
+	c, _ := playground.FromEnv(env(nil))
+	a, _ := c.NewAuth()
+	o := c.MCPOptions(a)
+	if o.PublicURL != "https://hello-staging.teb.ooo" || o.App != "hello" || o.AuthorizationServer != "https://oidc.teb.ooo" || o.Auth == nil {
+		t.Fatalf("%+v", o)
 	}
 }

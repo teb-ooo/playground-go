@@ -17,7 +17,9 @@ import (
 	"github.com/teb-ooo/playground-go/apierr"
 	"github.com/teb-ooo/playground-go/assistant"
 	"github.com/teb-ooo/playground-go/auth"
+	"github.com/teb-ooo/playground-go/keys"
 	"github.com/teb-ooo/playground-go/mail"
+	"github.com/teb-ooo/playground-go/openapimcp"
 	"github.com/teb-ooo/playground-go/spa"
 )
 
@@ -222,8 +224,34 @@ func (c Config) SPA() spa.Config {
 }
 
 // NewAuth builds the auth package's Auth from the config.
+//
+// Platform API keys (pk_ bearer tokens) are accepted without any app code
+// when PLAYGROUND_DOMAIN is set: the keys verifier is installed, with the app
+// name for audience and scopes. Options passed by the caller come last and
+// win, so WithKeyVerifier replaces it.
 func (c Config) NewAuth(opts ...auth.Option) (*auth.Auth, error) {
-	return auth.New(c.OIDC, c.SessionKey, append([]auth.Option{auth.WithOwner(c.AppOwner)}, opts...)...)
+	base := []auth.Option{auth.WithOwner(c.AppOwner), auth.WithAppName(c.AppName)}
+	if c.PlaygroundDomain != "" && c.AppName != "" {
+		kv, err := keys.New(keys.Options{App: c.AppName, Domain: c.PlaygroundDomain})
+		if err != nil {
+			return nil, err
+		}
+		base = append(base, auth.WithKeyVerifier(kv.Verify))
+	}
+	return auth.New(c.OIDC, c.SessionKey, append(base, opts...)...)
+}
+
+// MCPOptions returns openapimcp options with the platform's wiring: the
+// caller's identity from authn (a.BearerOrSession), and, when PLAYGROUND_DOMAIN
+// is set, the OAuth discovery of RFC 9728 (public URL, app name and the
+// authorization server https://oidc.<domain>). Set further fields on the
+// result.
+func (c Config) MCPOptions(authn *auth.Auth) openapimcp.Options {
+	o := openapimcp.Options{Name: c.AppName, Auth: authn.BearerOrSession, PublicURL: c.PublicURL, App: c.AppName}
+	if c.PlaygroundDomain != "" {
+		o.AuthorizationServer = "https://oidc." + c.PlaygroundDomain
+	}
+	return o
 }
 
 // NewMailer builds the mailer (transport only; the app renders its own email

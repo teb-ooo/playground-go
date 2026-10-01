@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -87,10 +88,13 @@ func TestResourcesAndPrompts(t *testing.T) {
 		t.Fatal("missing required argument should fail")
 	}
 
-	// Same auth as tools: a caller Auth rejects cannot read.
-	bad := connect(t, h, http.Header{"Authorization": {"Bearer bad"}})
-	if _, err = bad.ReadResource(ctx, &mcp.ReadResourceParams{URI: "lore://about"}); err == nil || !strings.Contains(err.Error(), "401") {
-		t.Fatalf("unauthenticated read: %v", err)
+	// Same auth as tools: a caller Auth rejects is turned away at the door.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
+	req.Header.Set("Authorization", "Bearer bad")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("rejected caller: status %d", rec.Code)
 	}
 	if authRan == 0 {
 		t.Fatal("Auth never ran")

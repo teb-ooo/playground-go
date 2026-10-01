@@ -33,6 +33,29 @@
 // blob with a MIME type; ErrResourceNotFound maps to MCP's not-found error;
 // MatchTemplate extracts the {variables} of a template from the URI.
 //
+// # Scopes, discovery and the 401 challenge
+//
+// A caller whose scopes are enforced (a platform API key, an OAuth token with
+// app scopes; see package auth) sees only the tools its scopes allow in
+// tools/list (tool scope: read for GET and HEAD, write otherwise, or the
+// operation's x-scope extension; public operations are always listed), and a
+// tools/call of any other tool answers a tool error naming the missing scope.
+// Anonymous callers, sessions and unscoped tokens see every tool, as before.
+// This needs Options.Auth: the endpoint runs it to identify the caller.
+//
+// Options.PublicURL, App and AuthorizationServer (Config.MCPOptions fills
+// them) turn on OAuth discovery for MCP clients. Server.RegisterMetadata
+// serves the RFC 9728 protected resource metadata at
+// /.well-known/oauth-protected-resource (and the path-suffixed form):
+// {resource: <PublicURL>/mcp, authorization_servers, scopes_supported:
+// [<app>:read, <app>:write], bearer_methods_supported: ["header"]}. Every 401
+// of the endpoint carries WWW-Authenticate: Bearer
+// resource_metadata="<PublicURL>/.well-known/oauth-protected-resource". With
+// Options.RequireAuth a call with no credential at all is such a 401, which is
+// what starts a client's OAuth sign-in; by default anonymous initialize and
+// tools/list stay public. The metadata is not an operation: ParityCheck is
+// unaffected.
+//
 // # Surface marker
 //
 // Every tool call runs with surface.With(ctx, surface.MCP) on the context of

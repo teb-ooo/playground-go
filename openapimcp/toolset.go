@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/teb-ooo/playground-go/auth"
 )
 
 var toolNameRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
@@ -44,6 +46,12 @@ type Tool struct {
 	// Method and Path are the HTTP method and OpenAPI path template.
 	Method string
 	Path   string
+
+	// Scope is the short scope (read, write, admin) the operation needs from a
+	// scope-limited caller (platform key, scoped OAuth token); Secured is false
+	// for a public operation. See auth.OperationScope.
+	Scope   string
+	Secured bool
 
 	params      []paramSpec
 	hasBody     bool
@@ -139,6 +147,7 @@ func buildTool(reg huma.Registry, method, path string, shared []*huma.Param, op 
 		return nil, fmt.Errorf("operation id %q is not a valid MCP tool name", op.OperationID)
 	}
 	t := &Tool{Name: op.OperationID, Method: method, Path: path, Summary: op.Summary}
+	t.Scope, t.Secured = auth.OperationScope(method, op)
 	t.Description = op.Summary
 	if op.Description != "" {
 		t.Description = op.Summary + "\n\n" + op.Description
