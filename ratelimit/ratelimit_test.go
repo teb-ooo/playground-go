@@ -265,3 +265,30 @@ func TestHumaMiddlewareAndCheck(t *testing.T) {
 		t.Errorf("other user = %d", w.Code)
 	}
 }
+
+func TestPeekTakesNothing(t *testing.T) {
+	c := newClock()
+	l := ratelimit.New(ratelimit.Options{Burst: 2, Now: c.now})
+	if blocked, _ := l.Peek("a"); blocked {
+		t.Fatal("unseen key is blocked")
+	}
+	l.Allow("a")
+	if blocked, _ := l.Peek("a"); blocked {
+		t.Fatal("blocked with a token left")
+	}
+	l.Allow("a")
+	blocked, wait := l.Peek("a")
+	if !blocked || wait != 6*time.Second {
+		t.Fatalf("Peek = %v %v, want blocked for 6s", blocked, wait)
+	}
+	// Peeking repeatedly must not consume or refill anything by itself.
+	l.Peek("a")
+	l.Peek("a")
+	c.advance(6 * time.Second)
+	if blocked, _ := l.Peek("a"); blocked {
+		t.Fatal("still blocked after the refill interval")
+	}
+	if ok, _ := l.Allow("a"); !ok {
+		t.Fatal("Allow refused after Peek said a token is available")
+	}
+}

@@ -128,6 +128,33 @@ func (l *Limiter) Allow(keys ...string) (ok bool, retryAfter time.Duration) {
 	return true, 0
 }
 
+// Peek reports, without taking a token, whether Allow would refuse these keys
+// now, and how long until every key would have a token. Callers that charge a
+// key only for failures (the apitoken package) use Peek to refuse a key that
+// has run out before doing any work for it. A key never seen is not created.
+func (l *Limiter) Peek(keys ...string) (blocked bool, retryAfter time.Duration) {
+	now := l.o.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var wait float64
+	for _, k := range keys {
+		b, ok := l.buckets[k]
+		if !ok {
+			continue
+		}
+		tokens := math.Min(float64(l.o.Burst), b.tokens+math.Max(0, now.Sub(b.last).Seconds())*l.rate)
+		if tokens < 1 {
+			if w := (1 - tokens) / l.rate; w > wait {
+				wait = w
+			}
+		}
+	}
+	if wait > 0 {
+		return true, time.Duration(math.Ceil(wait*1000)) * time.Millisecond
+	}
+	return false, 0
+}
+
 // get returns the refilled bucket for k, creating a full one if needed.
 func (l *Limiter) get(k string, now time.Time) *bucket {
 	b, ok := l.buckets[k]
