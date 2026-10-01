@@ -51,6 +51,8 @@ type Auth struct {
 	provider *oidc.Provider
 	bearer   *bearerCache
 
+	tokenVerifier TokenVerifier
+
 	owner      string
 	rl         ratelimit.Options
 	noRL       bool
@@ -69,6 +71,31 @@ func WithHTTPClient(c *http.Client) Option { return func(a *Auth) { a.client = c
 func WithOwner(email string) Option {
 	return func(a *Auth) { a.owner = strings.ToLower(strings.TrimSpace(email)) }
 }
+
+// PATPrefix starts every personal access token. A bearer token with this
+// prefix goes to the TokenVerifier (never to the OIDC path); without a
+// verifier it is treated as any other bearer token and fails.
+const PATPrefix = "pat_"
+
+// TokenVerifier checks a personal access token (the whole bearer value, with
+// its PATPrefix) presented on request r and returns the user it belongs to.
+// ok=false with a nil error means unknown, revoked or expired (401); a
+// *RateLimitedError means the client is making too many failed attempts (429);
+// any other error is a backend failure (503, logged, not shown). The error
+// must never contain the token. r is passed so the verifier can rate limit by
+// client IP. The apitoken package provides the implementation.
+type TokenVerifier func(r *http.Request, token string) (u User, ok bool, err error)
+
+// RateLimitedError is returned by a TokenVerifier that refused a client.
+type RateLimitedError struct{ RetryAfter time.Duration }
+
+func (e *RateLimitedError) Error() string { return "auth: too many failed token attempts" }
+
+// WithTokenVerifier lets Middleware and BearerOrSession accept personal access
+// tokens: a bearer token starting with PATPrefix is checked by v before, and
+// instead of, the OIDC path. Users it returns are recorded with
+// CredentialToken. Without this option nothing changes.
+func WithTokenVerifier(v TokenVerifier) Option { return func(a *Auth) { a.tokenVerifier = v } }
 
 // WithSessionTTL sets the session lifetime (default DefaultSessionTTL).
 func WithSessionTTL(d time.Duration) Option { return func(a *Auth) { a.ttl = d } }

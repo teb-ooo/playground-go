@@ -17,6 +17,14 @@
 // Every cookie this package sets is Secure, HttpOnly, SameSite=Lax and
 // host-only (no Domain attribute).
 //
+// Personal access tokens: WithTokenVerifier plugs in a verifier (the apitoken
+// package) for bearer tokens that start with PATPrefix ("pat_"). They are
+// checked there instead of by the OIDC path, so a long-lived revocable token
+// can serve external MCP clients. Middleware and BearerOrSession record how
+// the caller proved who they are (CredentialFromContext: session, bearer or
+// token); RequireSession admits only a browser session, for operations that
+// manage credentials.
+//
 // Middleware never rejects; operations that need a user call Require, which
 // yields a 401 problem+json through Huma.
 package auth
