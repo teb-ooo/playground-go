@@ -130,7 +130,7 @@ func (l *Limiter) Allow(keys ...string) (ok bool, retryAfter time.Duration) {
 
 // Peek reports, without taking a token, whether Allow would refuse these keys
 // now, and how long until every key would have a token. Callers that charge a
-// key only for failures (the apitoken package) use Peek to refuse a key that
+// key only for failures use Peek to refuse a key that
 // has run out before doing any work for it. A key never seen is not created.
 func (l *Limiter) Peek(keys ...string) (blocked bool, retryAfter time.Duration) {
 	now := l.o.Now()

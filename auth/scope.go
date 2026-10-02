@@ -47,8 +47,8 @@ var errNoApp = errors.New("auth: WithAppName is required with WithKeyVerifier")
 //     carries app scopes (an scp or scope claim with entries of the form
 //     "<app>:read|write|admin"); a token with only openid/email/profile style
 //     scopes, or none, is unrestricted as before.
-//   - CredentialToken (legacy personal access token): restricted only when
-//     the verifier returned Scopes (apitoken does not): unrestricted.
+//   - CredentialToken (a token verifier plugged in with WithTokenVerifier): restricted only when
+//     the verifier returned Scopes.
 //
 // An administrator needs both the admin group (from the identity, or the key's
 // groups claim) and the "<app>:admin" scope for an admin operation reached

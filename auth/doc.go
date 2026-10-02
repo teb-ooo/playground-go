@@ -17,8 +17,8 @@
 // Every cookie this package sets is Secure, HttpOnly, SameSite=Lax and
 // host-only (no Domain attribute).
 //
-// Personal access tokens: WithTokenVerifier plugs in a verifier (the apitoken
-// package) for bearer tokens that start with PATPrefix ("pat_"). They are
+// Personal access tokens: WithTokenVerifier plugs in an app's own verifier
+// (platform API keys and MCP sign-in replace the old apitoken package, removed in v0.9.0) for bearer tokens that start with PATPrefix ("pat_"). They are
 // checked there instead of by the OIDC path, so a long-lived revocable token
 // can serve external MCP clients. Middleware and BearerOrSession record how
 // the caller proved who they are (CredentialFromContext: session, bearer or
@@ -40,7 +40,6 @@
 //	                          scope claim holds app scopes; openid/email/profile
 //	                          only, or no claim, stays unrestricted
 //	token (pat_, legacy)      restricted only if the verifier returned Scopes
-//	                          (apitoken does not)
 //
 // ScopesEnforced says which applies; ScopeMiddleware (installed by Register,
 // before the operations are registered) checks each operation that has a

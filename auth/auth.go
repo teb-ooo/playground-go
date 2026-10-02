@@ -85,7 +85,7 @@ const PATPrefix = "pat_"
 // *RateLimitedError means the client is making too many failed attempts (429);
 // any other error is a backend failure (503, logged, not shown). The error
 // must never contain the token. r is passed so the verifier can rate limit by
-// client IP. The apitoken package provides the implementation.
+// client IP. Platform API keys (package keys) cover the common case.
 type TokenVerifier func(r *http.Request, token string) (u User, ok bool, err error)
 
 // RateLimitedError is returned by a TokenVerifier that refused a client.
