@@ -210,7 +210,7 @@ func TestMCPOptions(t *testing.T) {
 	c, _ := playground.FromEnv(env(nil))
 	a, _ := c.NewAuth()
 	o := c.MCPOptions(a)
-	if o.PublicURL != "https://hello-staging.teb.ooo" || o.App != "hello" || o.AuthorizationServer != "https://oidc.teb.ooo" || o.Auth == nil {
+	if o.PublicURL != "https://hello-staging.teb.ooo" || o.App != "hello" || o.AuthorizationServer != "https://oidc.teb.ooo" || o.Auth == nil || !o.RequireAuth {
 		t.Fatalf("%+v", o)
 	}
 }

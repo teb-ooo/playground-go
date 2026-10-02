@@ -244,12 +244,15 @@ func (c Config) NewAuth(opts ...auth.Option) (*auth.Auth, error) {
 // MCPOptions returns openapimcp options with the platform's wiring: the
 // caller's identity from authn (a.BearerOrSession), and, when PLAYGROUND_DOMAIN
 // is set, the OAuth discovery of RFC 9728 (public URL, app name and the
-// authorization server https://oidc.<domain>). Set further fields on the
-// result.
+// authorization server https://oidc.<domain>, and RequireAuth so an anonymous
+// call is a 401 with the challenge, which is how MCP clients begin their OAuth
+// sign-in). Set further fields on the result.
 func (c Config) MCPOptions(authn *auth.Auth) openapimcp.Options {
 	o := openapimcp.Options{Name: c.AppName, Auth: authn.BearerOrSession, PublicURL: c.PublicURL, App: c.AppName}
 	if c.PlaygroundDomain != "" {
 		o.AuthorizationServer = "https://oidc." + c.PlaygroundDomain
+		// An MCP client starts its sign-in from a 401 with the challenge, so anonymous calls get one.
+		o.RequireAuth = true
 	}
 	return o
 }
