@@ -205,6 +205,29 @@ func TestValid(t *testing.T) {
 	e.wantOK(t, e.sign("k1", c))
 }
 
+func TestAct(t *testing.T) {
+	e := newEnv(t)
+	c := e.claims()
+	c["act"] = "bd"
+	if u := e.wantOK(t, e.sign("k1", c)); u.Agent != "bd" || u.Subject != "u-1" || u.Email != "a@x.org" {
+		t.Fatalf("user = %+v", u)
+	}
+	if u := e.wantOK(t, e.sign("k1", e.claims())); u.Agent != "" {
+		t.Fatalf("agent = %q", u.Agent)
+	}
+	for _, bad := range []string{"BD", "b", "1bd", "bd_x", "bd x", "-bd", "a/b", strings.Repeat("a", 32)} {
+		c := e.claims()
+		c["act"] = bad
+		e.want401(t, e.sign("k1", c))
+	}
+	c = e.claims()
+	c["act"] = 5
+	e.want401(t, e.sign("k1", c))
+	c = e.claims()
+	c["act"] = strings.Repeat("a", 31)
+	e.wantOK(t, e.sign("k1", c))
+}
+
 func TestRefusals(t *testing.T) {
 	e := newEnv(t)
 	cases := map[string]func(c map[string]any){

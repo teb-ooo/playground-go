@@ -17,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -213,7 +214,11 @@ type claims struct {
 	Exp      *float64        `json:"exp"`
 	NBF      *float64        `json:"nbf"`
 	Groups   []string        `json:"groups"`
+	Act      string          `json:"act"`
 }
+
+// actRE is the app name pattern: the only values an act claim may take.
+var actRE = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 
 func (c claims) audience() []string {
 	var many []string
@@ -226,6 +231,9 @@ func (c claims) audience() []string {
 	}
 	return nil
 }
+
+// An optional "act" claim names the app an agent key acts for; it is exposed
+// as auth.User.Agent. A present act that is not an app name refuses the key.
 
 // Verify implements auth.TokenVerifier for a "pk_" key. ok=false with a nil
 // error is a plain 401; a *auth.RateLimitedError is a 429; an
@@ -283,6 +291,9 @@ func (v *Verifier) Verify(r *http.Request, token string) (auth.User, bool, error
 	if c.NBF != nil && now.Add(v.o.Leeway).Before(unix(*c.NBF)) {
 		return auth.User{}, false, nil
 	}
+	if c.Act != "" && !actRE.MatchString(c.Act) {
+		return auth.User{}, false, nil
+	}
 	if !slices.Contains(c.audience(), v.o.App) {
 		return auth.User{}, false, nil
 	}
@@ -297,7 +308,7 @@ func (v *Verifier) Verify(r *http.Request, token string) (auth.User, bool, error
 	if scopes == nil {
 		scopes = []string{}
 	}
-	return auth.User{Subject: c.Subject, Email: c.Email, Username: c.Username, Groups: c.Groups, Scopes: scopes}, true, nil
+	return auth.User{Subject: c.Subject, Email: c.Email, Username: c.Username, Groups: c.Groups, Scopes: scopes, Agent: c.Act}, true, nil
 }
 
 func unix(f float64) time.Time { return time.Unix(int64(f), 0) }

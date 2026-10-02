@@ -21,6 +21,10 @@ type User struct {
 	// Scopes are the granted scopes ("notes:read") of a platform API key or a
 	// scoped OAuth token. Empty for sessions. See ScopesEnforced for when they apply.
 	Scopes []string
+	// Agent is the app an agent key acts for, from the signed `act` claim;
+	// empty for sessions, person keys and tokens. Middleware sets it only for
+	// CredentialKey. It carries no permission by itself: apps decide.
+	Agent string
 }
 
 // IsAdmin reports whether the user belongs to the admin group.
@@ -67,6 +71,16 @@ func WithCredential(ctx context.Context, c Credential) context.Context {
 func CredentialFromContext(ctx context.Context) Credential {
 	c, _ := ctx.Value(credKey{}).(Credential)
 	return c
+}
+
+// AgentFromContext returns the app an agent key acts for (User.Agent), or ""
+// when the caller is not identified by an agent key.
+func AgentFromContext(ctx context.Context) string {
+	if CredentialFromContext(ctx) != CredentialKey {
+		return ""
+	}
+	u, _ := FromContext(ctx)
+	return u.Agent
 }
 
 // RequireSession returns the user only when they signed in through the

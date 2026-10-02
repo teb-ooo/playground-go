@@ -87,6 +87,9 @@ func (a *Auth) runVerifier(v TokenVerifier, r *http.Request, tok string) (User, 
 // credential, the app name (for short scope names) and, for a platform key,
 // the AI-caller surface.
 func (a *Auth) identified(r *http.Request, u User, cred Credential) *http.Request {
+	if cred != CredentialKey {
+		u.Agent = "" // only a signed key claim can name an agent
+	}
 	ctx := WithApp(WithCredential(WithUser(r.Context(), u), cred), a.appName)
 	if cred == CredentialKey {
 		if s := surface.From(ctx); !s.IsAI() {
