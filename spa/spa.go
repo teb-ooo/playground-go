@@ -1,7 +1,7 @@
 // Package spa serves an embedded single-page app: it serves files from an
 // fs.FS, falls back to index.html for unknown paths, and injects
 // window.__PLAYGROUND__ (app_name, env, claude_session_url, locale,
-// timezone, assistant, platform_domain) so the frontend knows where it runs. The statement is
+// timezone, platform_domain) so the frontend knows where it runs. The statement is
 // served at /playground.js and index.html loads it with a classic script tag in
 // <head>: the site's Content-Security-Policy (script-src 'self') blocks inline
 // scripts, so it cannot be injected inline.
@@ -29,9 +29,6 @@ const PlaygroundJSPath = "/playground.js"
 type Config struct {
 	AppName string
 	Env     string
-	// Assistant tells the frontend the end-user assistant is enabled (the
-	// command palette shows "Ask assistant..." only then). Default false.
-	Assistant bool
 	// Locale is PLAYGROUND_LOCALE (default en-US) and Timezone PLAYGROUND_TIMEZONE
 	// (default UTC); the web package's fmt helpers format with them.
 	Locale   string
@@ -91,7 +88,7 @@ func (h *handler) playgroundScript() []byte {
 	}
 	data, _ := json.Marshal(map[string]any{
 		"app_name": h.cfg.AppName, "env": h.cfg.Env, "claude_session_url": session,
-		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "assistant": h.cfg.Assistant, "platform_domain": h.cfg.PlatformDomain,
+		"locale": h.cfg.Locale, "timezone": h.cfg.Timezone, "platform_domain": h.cfg.PlatformDomain,
 	})
 	return append(append([]byte("window.__PLAYGROUND__ = "), data...), ';')
 }

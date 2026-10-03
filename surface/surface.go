@@ -16,14 +16,14 @@
 // The values are UI (a browser session), API (any other direct HTTP caller,
 // for example a script with a bearer token), Key (a direct HTTP caller
 // authenticated by a platform API key, set by the auth package and AI like MCP), MCP (a tool call made through
-// openapimcp) and Assistant (a tool call made by the assistant package).
+// openapimcp) and Assistant (a tool call made by an app's own in-app assistant, which sets it itself with With).
 // From never fails: a context nobody marked reads as API.
 //
 // # Why it cannot be forged
 //
 // The marker lives in the request context under an unexported key. A context
 // is built inside the process, so nothing a client sends can set it. The
-// dispatchers in this library (openapimcp.Server for MCP, assistant for its
+// dispatchers in this library (openapimcp.Server for MCP; an app's own assistant, if it has one, for its
 // tools) call With on the context of the in-process request they build, which
 // overrides whatever the outer request was classified as. The marker is NOT
 // carried in a header between them, so there is no header to forge.

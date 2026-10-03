@@ -1,7 +1,7 @@
 // Package playground is the convenience entry point of playground-go: Config, loaded
 // from the environment every playground container gets, with validation, so
 // apps do not reimplement it. The library packages live beside it: openapimcp,
-// auth, health, log, assistant, mail, spa and testkit.
+// auth, health, log, mail, spa and testkit.
 package playground
 
 import (
@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/teb-ooo/playground-go/apierr"
-	"github.com/teb-ooo/playground-go/assistant"
 	"github.com/teb-ooo/playground-go/auth"
 	"github.com/teb-ooo/playground-go/keys"
 	"github.com/teb-ooo/playground-go/mail"
@@ -31,9 +30,6 @@ const (
 	EnvStaging    = "staging"
 	EnvProduction = "production"
 )
-
-// DefaultAssistantModel is the playground-wide model (BOOTSTRAP section 6b).
-const DefaultAssistantModel = assistant.DefaultModel
 
 // Config is an app's configuration. Load it with LoadConfig.
 type Config struct {
@@ -56,15 +52,8 @@ type Config struct {
 	// Mail is MAIL_PROVIDER, MAIL_API_KEY, MAIL_STAGING_SINK, MAIL_FROM plus
 	// AppName, Env and PlaygroundDomain. Provider is empty when mail is not configured.
 	Mail mail.Config
-	// AssistantModel is ASSISTANT_MODEL (default claude-sonnet-5-5).
-	AssistantModel string
 	// AppOwner is APP_OWNER, the owner's email (lower case), empty when the app has no owner. Pass it to auth.WithOwner.
 	AppOwner string
-	// AnthropicAPIKey is ANTHROPIC_API_KEY; empty means the assistant is off.
-	AnthropicAPIKey string
-	// Assistant is PLAYGROUND_ASSISTANT (true|false, default false): whether the
-	// frontend offers the assistant. Independent of AnthropicAPIKey.
-	Assistant bool
 	// Version is the build version. Not read from the environment: set it from
 	// an -ldflags variable.
 	Version string
@@ -83,15 +72,10 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		Env:              get("APP_ENV"),
 		PublicURL:        strings.TrimRight(get("PUBLIC_URL"), "/"),
 		PlaygroundDomain: get("PLAYGROUND_DOMAIN"),
-		AssistantModel:   get("ASSISTANT_MODEL"),
 		AppOwner:         strings.ToLower(strings.TrimSpace(get("APP_OWNER"))),
-		AnthropicAPIKey:  get("ANTHROPIC_API_KEY"),
 	}
 	if c.Port == "" {
 		c.Port = "8080"
-	}
-	if c.AssistantModel == "" {
-		c.AssistantModel = DefaultAssistantModel
 	}
 	c.OIDC = auth.OIDCConfig{
 		Issuer: get("OIDC_ISSUER"), ClientID: get("OIDC_CLIENT_ID"), ClientSecret: get("OIDC_CLIENT_SECRET"),
@@ -103,13 +87,6 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 
 	var errs []error
-	if raw := strings.ToLower(get("PLAYGROUND_ASSISTANT")); raw != "" {
-		b, err := strconv.ParseBool(raw)
-		if err != nil {
-			errs = append(errs, errors.New("PLAYGROUND_ASSISTANT must be true or false"))
-		}
-		c.Assistant = b
-	}
 	if raw := get("SESSION_KEY"); raw == "" {
 		errs = append(errs, errors.New("SESSION_KEY is required"))
 	} else if k, err := auth.ParseKey(raw); err != nil {
@@ -214,13 +191,10 @@ func (c Config) IsProduction() bool { return c.Env == EnvProduction }
 // Addr is the listen address, ":" plus Port.
 func (c Config) Addr() string { return ":" + c.Port }
 
-// AssistantEnabled reports whether an Anthropic API key is configured.
-func (c Config) AssistantEnabled() bool { return c.AnthropicAPIKey != "" }
-
-// SPA returns the spa.Config for this app: name, environment and the assistant
-// flag. Locale and timezone come from PLAYGROUND_LOCALE and PLAYGROUND_TIMEZONE.
+// SPA returns the spa.Config for this app: name, environment and
+// platform domain. Locale and timezone come from PLAYGROUND_LOCALE and PLAYGROUND_TIMEZONE.
 func (c Config) SPA() spa.Config {
-	return spa.Config{AppName: c.AppName, Env: c.Env, Assistant: c.Assistant, PlatformDomain: c.PlaygroundDomain}
+	return spa.Config{AppName: c.AppName, Env: c.Env, PlatformDomain: c.PlaygroundDomain}
 }
 
 // NewAuth builds the auth package's Auth from the config.
@@ -266,11 +240,6 @@ func (c Config) NewMailer() (*mail.Mailer, error) {
 	return mail.New(c.Mail)
 }
 
-// AssistantOptions returns assistant options from the config, using store.
-func (c Config) AssistantOptions(store assistant.Store) assistant.Options {
-	return assistant.Options{AppName: c.AppName, Model: c.AssistantModel, APIKey: c.AnthropicAPIKey, Store: store}
-}
-
 // LogValue implements slog.LogValuer: secrets are reduced to whether they are set.
 func (c Config) LogValue() slog.Value {
 	set := func(s string) string {
@@ -284,7 +253,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("public_url", c.PublicURL), slog.String("oidc_issuer", c.OIDC.Issuer),
 		slog.String("oidc_client_id", c.OIDC.ClientID), slog.String("oidc_client_secret", set(c.OIDC.ClientSecret)),
 		slog.String("session_key", set(string(c.SessionKey))), slog.String("database_url", set(c.DatabaseURL)),
-		slog.String("mail_provider", c.Mail.Provider), slog.String("anthropic_api_key", set(c.AnthropicAPIKey)),
-		slog.String("assistant_model", c.AssistantModel), slog.String("version", c.Version),
+		slog.String("mail_provider", c.Mail.Provider),
+		slog.String("version", c.Version),
 	)
 }

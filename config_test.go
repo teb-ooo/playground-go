@@ -32,7 +32,7 @@ func TestFromEnvDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Port != "8080" || c.Addr() != ":8080" || c.AssistantModel != "claude-sonnet-5-5" || c.IsProduction() || c.AssistantEnabled() {
+	if c.Port != "8080" || c.Addr() != ":8080" || c.IsProduction() {
 		t.Errorf("defaults wrong: %+v", c)
 	}
 	if c.PublicURL != "https://hello-staging.teb.ooo" || c.OIDC.PublicURL != c.PublicURL || c.OIDC.RedirectURL() != "https://hello-staging.teb.ooo/auth/callback" {
@@ -113,23 +113,15 @@ func TestAllProblemsReportedAtOnceWithoutSecrets(t *testing.T) {
 	}
 }
 
-func TestMailAndAssistantWiring(t *testing.T) {
+func TestMailWiring(t *testing.T) {
 	c, err := playground.FromEnv(env(map[string]string{
 		"MAIL_PROVIDER": "resend", "MAIL_API_KEY": "mk", "MAIL_STAGING_SINK": "sink@example.org",
-		"ANTHROPIC_API_KEY": "ak", "ASSISTANT_MODEL": "claude-opus-5-5",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.NewMailer(); err != nil {
 		t.Errorf("NewMailer: %v", err)
-	}
-	if !c.AssistantEnabled() {
-		t.Error("assistant should be enabled")
-	}
-	o := c.AssistantOptions(nil)
-	if o.Model != "claude-opus-5-5" || o.APIKey != "ak" || o.AppName != "hello" {
-		t.Errorf("assistant options = %+v", o)
 	}
 }
 
@@ -145,38 +137,17 @@ func TestValidateOnHandBuiltConfig(t *testing.T) {
 }
 
 func TestLogValueRedactsSecrets(t *testing.T) {
-	c, _ := playground.FromEnv(env(map[string]string{"ANTHROPIC_API_KEY": "sk-ant-topsecret"}))
+	c, _ := playground.FromEnv(env(nil))
 	var buf bytes.Buffer
 	slog.New(slog.NewJSONHandler(&buf, nil)).Info("config", "config", c)
 	out := buf.String()
-	for _, secret := range []string{"s3cret-value", "sk-ant-topsecret", "0123456789abcdef", "postgres://u:p@"} {
+	for _, secret := range []string{"s3cret-value", "0123456789abcdef", "postgres://u:p@"} {
 		if strings.Contains(out, secret) {
 			t.Errorf("log leaks %q: %s", secret, out)
 		}
 	}
-	if !strings.Contains(out, `"app_name":"hello"`) || !strings.Contains(out, `"anthropic_api_key":"set"`) {
+	if !strings.Contains(out, `"app_name":"hello"`) {
 		t.Errorf("log = %s", out)
-	}
-}
-
-func TestPlaygroundAssistantFlag(t *testing.T) {
-	tests := []struct {
-		val     string
-		want    bool
-		wantErr bool
-	}{{"", false, false}, {"true", true, false}, {"TRUE", true, false}, {"false", false, false}, {"1", true, false}, {"yes", false, true}}
-	for _, tc := range tests {
-		t.Run(tc.val, func(t *testing.T) {
-			c, err := playground.FromEnv(env(map[string]string{"PLAYGROUND_ASSISTANT": tc.val}))
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("err = %v", err)
-			}
-			if err == nil {
-				if c.Assistant != tc.want || c.SPA().Assistant != tc.want || c.SPA().AppName != "hello" || c.SPA().Env != "staging" {
-					t.Errorf("config = %+v spa = %+v", c.Assistant, c.SPA())
-				}
-			}
-		})
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/teb-ooo/playground-go/assistant"
 	"github.com/teb-ooo/playground-go/auth"
 	"github.com/teb-ooo/playground-go/health"
 	playgroundlog "github.com/teb-ooo/playground-go/log"
@@ -56,8 +55,6 @@ func TestWholeStack(t *testing.T) {
 
 	mcpH := openapimcp.Handler(api, mux, openapimcp.Options{Name: cfg.AppName, Auth: authn.BearerOrSession})
 	mux.Handle("/mcp", mcpH)
-	mux.Handle("/api/assistant/", assistant.Handler(api, mux, assistant.Options{
-		AppName: cfg.AppName, APIKey: "unused-in-this-test", Store: assistant.NewMemoryStore()}))
 	mux.Handle("/", spa.Handler(fstest.MapFS{"index.html": {Data: []byte("<html><head></head><body></body></html>")}}, spa.Config{AppName: cfg.AppName, Env: cfg.Env, SessionURLFile: "/nonexistent"}))
 	handler := playgroundlog.Middleware(authn.Middleware(mux))
 
@@ -97,8 +94,6 @@ func TestWholeStack(t *testing.T) {
 		{"healthz", "/healthz", nil, 200, `"db":"ok"`},
 		{"spa fallback", "/some/route", nil, 200, `<script src="/playground.js">`},
 		{"playground.js", "/playground.js", nil, 200, "window.__PLAYGROUND__"},
-		{"assistant needs login", "/api/assistant/conversations", nil, 401, ""},
-		{"assistant list", "/api/assistant/conversations", admin, 200, "[]"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
