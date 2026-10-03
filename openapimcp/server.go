@@ -101,7 +101,11 @@ func New(api huma.API, app http.Handler, opts Options) (*Server, error) {
 	}
 	for _, t := range ts.Tools() {
 		t := t
-		srv.AddTool(&mcp.Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema},
+		mt := &mcp.Tool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema}
+		if t.RequireUserInteraction {
+			mt.Meta = mcp.Meta{"anthropic/requiresUserInteraction": true}
+		}
+		srv.AddTool(mt,
 			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				var hdr http.Header
 				if req.Extra != nil {

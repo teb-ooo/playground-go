@@ -34,6 +34,13 @@ type paramSpec struct {
 }
 
 // Tool is one MCP tool derived from one OpenAPI operation.
+// RequireUserInteractionExtension is the operation Extension key that makes the generated MCP tool carry
+// `_meta["anthropic/requiresUserInteraction"] = true`: Claude Code then prompts the person before every call, in every permission
+// mode, and an allow rule cannot skip the prompt. Use it for operations that need a human's approval (for example applying a rule change).
+//
+//	huma.Operation{..., Extensions: map[string]any{openapimcp.RequireUserInteractionExtension: true}}
+const RequireUserInteractionExtension = "x-require-user-interaction"
+
 type Tool struct {
 	// Name is the operation id.
 	Name string
@@ -46,6 +53,10 @@ type Tool struct {
 	// Method and Path are the HTTP method and OpenAPI path template.
 	Method string
 	Path   string
+
+	// RequireUserInteraction marks the tool so that Claude Code always asks the person before calling it (even in bypass mode
+	// and with an allow rule): set with the operation extension RequireUserInteractionExtension.
+	RequireUserInteraction bool
 
 	// Scope is the short scope (read, write, admin) the operation needs from a
 	// scope-limited caller (platform key, scoped OAuth token); Secured is false
@@ -148,6 +159,7 @@ func buildTool(reg huma.Registry, method, path string, shared []*huma.Param, op 
 	}
 	t := &Tool{Name: op.OperationID, Method: method, Path: path, Summary: op.Summary}
 	t.Scope, t.Secured = auth.OperationScope(method, op)
+	t.RequireUserInteraction, _ = op.Extensions[RequireUserInteractionExtension].(bool)
 	t.Description = op.Summary
 	if op.Description != "" {
 		t.Description = op.Summary + "\n\n" + op.Description
