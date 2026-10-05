@@ -69,7 +69,7 @@ func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 //	    the OpenAPI document and so are excluded, and so are operations with `x-mcp: false`, see NoToolExtension) equal the sorted tool names
 //	    listed by mcpHandler over the streamable HTTP transport, and
 //	(b) every operation has a non-empty Summary and Description, and
-//	(c) the API contract of docs/go-api.md holds, see checkContract: kebab-case verb-noun OperationID, Method,
+//	(c) the API contract of docs/go-api.md holds, see checkContract (a list operation, a GET whose 200 body has an `items` array, follows the page package: `limit` and `cursor` query parameters and `next_cursor`): kebab-case verb-noun OperationID, Method,
 //	    Path under /api/, Tags, Security covering session and bearer, snake_case request and response property
 //	    names, date-time format on timestamps (names ending _at) and ids (id, *_id) that are strings with format uuid (ids the app
 //	generates), or with another format or a pattern (ids it does not generate); integer ids need an exemption.
@@ -179,6 +179,10 @@ func checkContract(t testing.TB, api huma.API, cfg *parityConfig, method, path s
 		fail("Security does not cover both the session and bearer schemes", `set Security to []map[string][]string{{"session": {}}, {"bearer": {}}}`)
 	}
 
+	if method == "GET" {
+		checkPagination(api, op, fail)
+	}
+
 	seen := map[*huma.Schema]bool{}
 	walk := func(where string, s *huma.Schema) {
 		checkSchema(api, s, where, "", seen, fail)
@@ -195,6 +199,55 @@ func checkContract(t testing.TB, api huma.API, cfg *parityConfig, method, path s
 		for _, mt := range r.Content {
 			walk("response "+code, mt.Schema)
 		}
+	}
+}
+
+// paginationFix explains how to satisfy the list rule (API-jvg), including the way out for a list that is bounded by nature.
+const paginationFix = `use the page package of playground-go (embed page.Params in the input, answer page.Body[T]); a list that is bounded by ` +
+	`nature (a fixed handful of rows) is exempted with openapimcp.WithExempt or the ExemptExtension and a reason`
+
+// checkPagination applies API-jvg to a GET whose 200 body is an object with an `items` array: it needs the `limit` query parameter (an
+// integer with minimum, maximum and default), the `cursor` query parameter (a string) and a `next_cursor` property.
+func checkPagination(api huma.API, op *huma.Operation, fail func(problem, fix string)) {
+	r := op.Responses["200"]
+	if r == nil {
+		return
+	}
+	var body *huma.Schema
+	for _, mt := range r.Content {
+		body = resolve(api, mt.Schema)
+	}
+	if body == nil || body.Properties == nil {
+		return
+	}
+	items := resolve(api, body.Properties["items"])
+	if items == nil || items.Type != "array" {
+		return
+	}
+	var limit, cursor *huma.Param
+	for _, p := range op.Parameters {
+		if p == nil || p.In != "query" {
+			continue
+		}
+		switch p.Name {
+		case "limit":
+			limit = p
+		case "cursor":
+			cursor = p
+		}
+	}
+	if limit == nil || cursor == nil {
+		fail("a list operation (the 200 body has an items array) lacks the limit or cursor query parameter (API-jvg)", paginationFix)
+		return
+	}
+	if ls := resolve(api, limit.Schema); ls == nil || ls.Type != "integer" || ls.Minimum == nil || ls.Maximum == nil || ls.Default == nil {
+		fail("the limit parameter of a list operation must be an integer with minimum, maximum and default (API-jvg)", paginationFix)
+	}
+	if cs := resolve(api, cursor.Schema); cs == nil || cs.Type != "string" {
+		fail("the cursor parameter of a list operation must be a string (API-jvg)", paginationFix)
+	}
+	if _, ok := body.Properties["next_cursor"]; !ok {
+		fail("the 200 body of a list operation must have a next_cursor property (API-jvg)", paginationFix)
 	}
 }
 
