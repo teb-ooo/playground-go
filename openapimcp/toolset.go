@@ -41,6 +41,19 @@ type paramSpec struct {
 //	huma.Operation{..., Extensions: map[string]any{openapimcp.RequireUserInteractionExtension: true}}
 const RequireUserInteractionExtension = "x-require-user-interaction"
 
+// NoToolExtension is the operation Extension key `x-mcp`: set to false it keeps the operation in the OpenAPI document (so the web
+// client and its types are generated from it) but makes it NOT an MCP tool. ParityCheck honours it. Use it only for browser-only
+// operations that carry an approved API-qan exception (key management, session routes); everything else stays a tool.
+//
+//	huma.Operation{..., Extensions: map[string]any{openapimcp.NoToolExtension: false}}
+const NoToolExtension = "x-mcp"
+
+// IsNotATool reports whether op carries `x-mcp: false`.
+func IsNotATool(op *huma.Operation) bool {
+	v, ok := op.Extensions[NoToolExtension].(bool)
+	return ok && !v
+}
+
 type Tool struct {
 	// Name is the operation id.
 	Name string
@@ -115,7 +128,7 @@ func NewToolset(api huma.API) (*Toolset, error) {
 			http.MethodHead: item.Head, http.MethodPatch: item.Patch, http.MethodTrace: item.Trace,
 		}
 		for method, op := range ops {
-			if op == nil {
+			if op == nil || IsNotATool(op) {
 				continue
 			}
 			t, err := buildTool(reg, method, path, item.Parameters, op)

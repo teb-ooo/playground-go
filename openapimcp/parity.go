@@ -66,7 +66,7 @@ func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // ParityCheck is the parity test every playground app runs. It asserts that
 //
 //	(a) the sorted operation ids of api (Hidden operations are not part of
-//	    the OpenAPI document and so are excluded) equal the sorted tool names
+//	    the OpenAPI document and so are excluded, and so are operations with `x-mcp: false`, see NoToolExtension) equal the sorted tool names
 //	    listed by mcpHandler over the streamable HTTP transport, and
 //	(b) every operation has a non-empty Summary and Description, and
 //	(c) the API contract of docs/go-api.md holds, see checkContract: kebab-case verb-noun OperationID, Method,
@@ -91,7 +91,9 @@ func ParityCheck(t testing.TB, api huma.API, mcpHandler http.Handler, opts ...Pa
 			if op == nil {
 				continue
 			}
-			ids = append(ids, op.OperationID)
+			if !IsNotATool(op) {
+				ids = append(ids, op.OperationID)
+			}
 			checkContract(t, api, cfg, method, path, op)
 		}
 	}
