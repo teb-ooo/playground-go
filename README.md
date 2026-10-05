@@ -86,3 +86,7 @@ Every cookie playground-go sets is `Secure; HttpOnly; SameSite=Lax` and host-onl
 ### Decisions
 
 Choices the document leaves open are in `/srv/playground/brain/docs/decisions/0020` to `0024`.
+
+## page
+
+`page` is the one way to paginate a list operation (rule API-jvg): `page.Params` (the `limit` and `cursor` query parameters), `page.Body[T]` (`items`, `next_cursor`), `page.Encode`/`page.Decode` (an opaque keyset cursor; a malformed cursor is a 400) and `page.Trim` (the fetch-limit-plus-one pattern). `openapimcp.ParityCheck` fails a GET whose 200 body has an `items` array but lacks `limit`, `cursor` or `next_cursor`. See the package comment and docs/go-api.md.
