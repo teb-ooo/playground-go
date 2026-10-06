@@ -60,6 +60,19 @@ type After struct {
 // Form is the text of the form step an action with "prompt" arguments opens.
 type Form struct {
 	Submit string `json:"submit,omitempty"` // the submit button's label, for example "Invite"
+	// Fields is the order of the prompted arguments (a Go map has no order and the OpenAPI document sorts object keys); every name must be a
+	// prompted argument. Empty leaves the order to the web side (@teb-ooo/ui 0.81).
+	Fields []string `json:"fields,omitempty"`
+	// Options turns a prompted text field into a select of the items of a list operation; the key is a prompted argument.
+	Options map[string]Options `json:"options,omitempty"`
+}
+
+// Options says where the choices of a prompted field come from: From is the operation id of a GET operation in the document, Value the item
+// property that is sent, Label the one shown (default Value).
+type Options struct {
+	From  string `json:"from"`
+	Value string `json:"value"`
+	Label string `json:"label,omitempty"`
 }
 
 // Action is the tag of a mutating operation (not GET): it becomes a command. Args maps each path, query or body field to
@@ -132,6 +145,15 @@ func (a Action) Validate() error {
 	}
 	if a.Form != nil && strings.TrimSpace(a.Form.Submit) == "" {
 		p = append(p, "Form needs a Submit label")
+	}
+	if a.Form != nil {
+		p = append(p, formProblems(a.Form.Fields, optionsKeys(a.Form.Options), func(n string) bool { return a.Args[n] == "prompt" })...)
+		for _, k := range sortedOptionKeys(a.Form.Options) {
+			o := a.Form.Options[k]
+			if strings.TrimSpace(o.From) == "" || strings.TrimSpace(o.Value) == "" {
+				p = append(p, fmt.Sprintf("option %s needs From and Value", k))
+			}
+		}
 	}
 	return problems(p)
 }
@@ -302,6 +324,31 @@ func checkOperation(api huma.API, method string, op *huma.Operation) string {
 		if g, _ := x["group"].(string); g == "" {
 			return "an action needs a group"
 		}
+		if f, _ := x["form"].(map[string]any); f != nil {
+			args, _ := x["args"].(map[string]any)
+			var fields []string
+			if l, _ := f["fields"].([]any); l != nil {
+				for _, e := range l {
+					n, _ := e.(string)
+					fields = append(fields, n)
+				}
+			}
+			opts, _ := f["options"].(map[string]any)
+			optKeys := sortedAnyKeys(opts)
+			if ps := formProblems(fields, optKeys, func(n string) bool { return args[n] == "prompt" }); len(ps) > 0 {
+				return strings.Join(ps, "; ")
+			}
+			for _, k := range optKeys {
+				o, _ := opts[k].(map[string]any)
+				from, _ := o["from"].(string)
+				if v, _ := o["value"].(string); from == "" || v == "" {
+					return fmt.Sprintf("form option %s needs from and value", k)
+				}
+				if !isGetOperation(api, from) {
+					return fmt.Sprintf("form option %s: %q is not a GET operation of the document", k, from)
+				}
+			}
+		}
 		if args, _ := x["args"].(map[string]any); args != nil {
 			var prompted []string
 			for _, k := range sortedAnyKeys(args) {
@@ -342,6 +389,48 @@ func checkOperation(api huma.API, method string, op *huma.Operation) string {
 		return "x-palette is neither an action (title, group), a source (source) nor false"
 	}
 	return ""
+}
+
+// isGetOperation reports whether the document has a GET operation with that operation id.
+func isGetOperation(api huma.API, id string) bool {
+	for _, item := range api.OpenAPI().Paths {
+		if item.Get != nil && item.Get.OperationID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// formProblems checks the form's field order and option keys against the prompted arguments.
+func formProblems(fields, optKeys []string, prompted func(string) bool) []string {
+	var p []string
+	seen := map[string]bool{}
+	for _, n := range fields {
+		switch {
+		case !prompted(n):
+			p = append(p, fmt.Sprintf("form field %q is not a prompted argument", n))
+		case seen[n]:
+			p = append(p, fmt.Sprintf("form field %q is listed twice", n))
+		}
+		seen[n] = true
+	}
+	for _, k := range optKeys {
+		if !prompted(k) {
+			p = append(p, fmt.Sprintf("form option %q is not a prompted argument", k))
+		}
+	}
+	return p
+}
+
+func optionsKeys(m map[string]Options) []string { return sortedOptionKeys(m) }
+
+func sortedOptionKeys(m map[string]Options) []string {
+	k := make([]string, 0, len(m))
+	for n := range m {
+		k = append(k, n)
+	}
+	slices.Sort(k)
+	return k
 }
 
 // promptProblem checks that every prompted argument is a property of the operation's JSON request body (an object schema) and a single

@@ -268,3 +268,46 @@ func TestPromptArgumentsAndForm(t *testing.T) {
 		t.Error("a form without prompt arguments must be refused")
 	}
 }
+
+// Form.Fields orders the questions and Form.Options turns a prompted field into a select of a list operation (@teb-ooo/ui 0.81).
+func TestFormFieldsAndOptions(t *testing.T) {
+	form := &palette.Form{Submit: "Invite", Fields: []string{"username", "level"},
+		Options: map[string]palette.Options{"level": {From: "list-levels", Value: "id", Label: "name"}}}
+	tag := palette.Action{Title: "Invite", Group: "Users", Args: map[string]string{"username": "prompt", "level": "prompt"}, Form: form}.Ext()
+	b, _ := json.Marshal(tag)
+	if !strings.Contains(string(b), `"fields":["username","level"]`) || !strings.Contains(string(b), `"options":{"level":{"from":"list-levels","value":"id","label":"name"}}`) {
+		t.Fatalf("shape: %s", b)
+	}
+	build := func(tag map[string]any, withList bool) huma.API {
+		a := apiWithBody(tag)
+		if withList {
+			huma.Register(a, op("list-levels", "GET", "/api/levels", nil), func(context.Context, *struct{}) (*struct{ Body []string }, error) { return nil, nil })
+		}
+		return a
+	}
+	r := &rec{}
+	palette.Check(r, build(tag, true))
+	if len(r.msgs) != 0 {
+		t.Fatalf("a valid form: %v", r.msgs)
+	}
+	r = &rec{}
+	palette.Check(r, build(tag, false))
+	if !strings.Contains(strings.Join(r.msgs, " "), "not a GET operation") {
+		t.Errorf("missing list operation: %v", r.msgs)
+	}
+	for name, f := range map[string]*palette.Form{
+		"field not prompted":  {Submit: "Go", Fields: []string{"email"}},
+		"field twice":         {Submit: "Go", Fields: []string{"username", "username"}},
+		"option not prompted": {Submit: "Go", Options: map[string]palette.Options{"email": {From: "x", Value: "id"}}},
+		"option without from": {Submit: "Go", Options: map[string]palette.Options{"username": {Value: "id"}}},
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: no panic", name)
+				}
+			}()
+			palette.Action{Title: "T", Group: "G", Args: map[string]string{"username": "prompt"}, Form: f}.Ext()
+		}()
+	}
+}
