@@ -24,11 +24,10 @@ func RequestID(ctx context.Context) string {
 func Middleware(next http.Handler) http.Handler { return MiddlewareWith(nil, next) }
 
 // MiddlewareWith logs one line per request with request_id, method, path,
-// status and duration_ms. The request id is taken from an incoming
+// status and duration_ms (error for a 5xx, warn for a 4xx, debug for a successful request to /healthz, /mcp, /api/live or /auth/me, info otherwise). The request id is taken from an incoming
 // X-Request-Id header when it is a sane token, otherwise a UUIDv7 is
 // generated; it is echoed in the response header and available through
-// RequestID and as a logger attribute via Logger. Requests to /healthz are
-// logged at debug level. A nil logger means slog.Default() at request time.
+// RequestID and as a logger attribute via Logger. A nil logger means slog.Default() at request time.
 func MiddlewareWith(l *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := l
@@ -48,13 +47,7 @@ func MiddlewareWith(l *slog.Logger, next http.Handler) http.Handler {
 			if status == 0 {
 				status = http.StatusOK
 			}
-			level := slog.LevelInfo
-			if r.URL.Path == "/healthz" {
-				level = slog.LevelDebug
-			} else if status >= 500 {
-				level = slog.LevelError
-			}
-			logger.LogAttrs(ctx, level, "request",
+			logger.LogAttrs(ctx, requestLevel(r.URL.Path, status), "request",
 				slog.String("request_id", id),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
@@ -64,6 +57,24 @@ func MiddlewareWith(l *slog.Logger, next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(rw, r.WithContext(ctx))
 	})
+}
+
+// quietPaths are polled or held open by clients (health checks, MCP sessions, the live stream, the session probe): a successful
+// request to one is logged at debug, so it does not bury what matters at the default level.
+var quietPaths = map[string]bool{"/healthz": true, "/mcp": true, "/api/live": true, "/auth/me": true}
+
+// requestLevel is the level of a request line: error for a 5xx, warn for a 4xx, debug for a successful request to a quiet path,
+// info for the rest.
+func requestLevel(path string, status int) slog.Level {
+	switch {
+	case status >= 500:
+		return slog.LevelError
+	case status >= 400:
+		return slog.LevelWarn
+	case quietPaths[path]:
+		return slog.LevelDebug
+	}
+	return slog.LevelInfo
 }
 
 func validRequestID(s string) bool {

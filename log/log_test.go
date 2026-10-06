@@ -77,7 +77,9 @@ func TestMiddleware(t *testing.T) {
 		wantSameID bool
 	}{
 		{"ok default 200", "/items", "", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("x")) }, 200, "INFO", false},
-		{"explicit status", "/nope", "", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) }, 404, "INFO", false},
+		{"client error is warn level", "/nope", "", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) }, 404, "WARN", false},
+		{"quiet path is debug", "/mcp", "", func(w http.ResponseWriter, r *http.Request) {}, 200, "DEBUG", false},
+		{"quiet path failure is not hidden", "/mcp", "", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }, 401, "WARN", false},
 		{"server error is error level", "/boom", "", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }, 500, "ERROR", false},
 		{"incoming request id kept", "/x", "abc-123", func(w http.ResponseWriter, r *http.Request) {}, 200, "INFO", true},
 		{"bad request id replaced", "/x", "bad id!\n", func(w http.ResponseWriter, r *http.Request) {}, 200, "INFO", false},
@@ -138,5 +140,14 @@ func TestFlushPassesThrough(t *testing.T) {
 	})).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if !rec.Flushed {
 		t.Error("flush did not reach the recorder")
+	}
+}
+
+func TestLevelFromEnv(t *testing.T) {
+	for in, want := range map[string]slog.Level{"debug": slog.LevelDebug, "INFO": slog.LevelInfo, " warn ": slog.LevelWarn, "Warning": slog.LevelWarn, "error": slog.LevelError, "": slog.LevelWarn + 1, "loud": slog.LevelWarn + 1} {
+		t.Setenv("TEST_LOG_LEVEL", in)
+		if got := flog.LevelFromEnv("TEST_LOG_LEVEL", slog.LevelWarn+1); got != want {
+			t.Errorf("%q: got %v, want %v", in, got, want)
+		}
 	}
 }

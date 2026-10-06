@@ -69,6 +69,23 @@ func NewWithSecrets(w io.Writer, level slog.Leveler, secrets []string) *slog.Log
 	return slog.New(&redactor{next: base, secrets: secrets})
 }
 
+// LevelFromEnv returns the level named by the environment variable name (debug, info, warn or error, any case; "warning" is
+// accepted too), or def when it is unset or not a level. An app reads LOG_LEVEL with it: `log.Setup(log.LevelFromEnv("LOG_LEVEL",
+// slog.LevelInfo))`.
+func LevelFromEnv(name string, def slog.Level) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	}
+	return def
+}
+
 // Setup installs New(os.Stdout, level) as the default slog logger and returns it.
 func Setup(level slog.Leveler) *slog.Logger {
 	l := New(os.Stdout, level)
