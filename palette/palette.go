@@ -73,6 +73,8 @@ type Options struct {
 	From  string `json:"from"`
 	Value string `json:"value"`
 	Label string `json:"label,omitempty"`
+	// Also are fixed values offered before the list's own items (for example "platform" beside the app names); each must be non-empty.
+	Also []string `json:"also,omitempty"`
 }
 
 // Action is the tag of a mutating operation (not GET): it becomes a command. Args maps each path, query or body field to
@@ -152,6 +154,11 @@ func (a Action) Validate() error {
 			o := a.Form.Options[k]
 			if strings.TrimSpace(o.From) == "" || strings.TrimSpace(o.Value) == "" {
 				p = append(p, fmt.Sprintf("option %s needs From and Value", k))
+			}
+			for _, v := range o.Also {
+				if strings.TrimSpace(v) == "" {
+					p = append(p, fmt.Sprintf("option %s has an empty Also value", k))
+				}
 			}
 		}
 	}
@@ -343,6 +350,14 @@ func checkOperation(api huma.API, method string, op *huma.Operation) string {
 				from, _ := o["from"].(string)
 				if v, _ := o["value"].(string); from == "" || v == "" {
 					return fmt.Sprintf("form option %s needs from and value", k)
+				}
+				if l, has := o["also"]; has {
+					al, _ := l.([]any)
+					for _, e := range al {
+						if v, _ := e.(string); strings.TrimSpace(v) == "" {
+							return fmt.Sprintf("form option %s: also entries must be non-empty strings", k)
+						}
+					}
 				}
 				if !isGetOperation(api, from) {
 					return fmt.Sprintf("form option %s: %q is not a GET operation of the document", k, from)

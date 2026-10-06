@@ -272,10 +272,10 @@ func TestPromptArgumentsAndForm(t *testing.T) {
 // Form.Fields orders the questions and Form.Options turns a prompted field into a select of a list operation (@teb-ooo/ui 0.81).
 func TestFormFieldsAndOptions(t *testing.T) {
 	form := &palette.Form{Submit: "Invite", Fields: []string{"username", "level"},
-		Options: map[string]palette.Options{"level": {From: "list-levels", Value: "id", Label: "name"}}}
+		Options: map[string]palette.Options{"level": {From: "list-levels", Value: "id", Label: "name", Also: []string{"platform"}}}}
 	tag := palette.Action{Title: "Invite", Group: "Users", Args: map[string]string{"username": "prompt", "level": "prompt"}, Form: form}.Ext()
 	b, _ := json.Marshal(tag)
-	if !strings.Contains(string(b), `"fields":["username","level"]`) || !strings.Contains(string(b), `"options":{"level":{"from":"list-levels","value":"id","label":"name"}}`) {
+	if !strings.Contains(string(b), `"fields":["username","level"]`) || !strings.Contains(string(b), `"options":{"level":{"from":"list-levels","value":"id","label":"name","also":["platform"]}}`) {
 		t.Fatalf("shape: %s", b)
 	}
 	build := func(tag map[string]any, withList bool) huma.API {
@@ -300,6 +300,7 @@ func TestFormFieldsAndOptions(t *testing.T) {
 		"field twice":         {Submit: "Go", Fields: []string{"username", "username"}},
 		"option not prompted": {Submit: "Go", Options: map[string]palette.Options{"email": {From: "x", Value: "id"}}},
 		"option without from": {Submit: "Go", Options: map[string]palette.Options{"username": {Value: "id"}}},
+		"empty also":          {Submit: "Go", Options: map[string]palette.Options{"username": {From: "x", Value: "id", Also: []string{""}}}},
 	} {
 		func() {
 			defer func() {
