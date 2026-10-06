@@ -36,10 +36,13 @@ func TestActionExtShapeMatchesTheWebTag(t *testing.T) {
 
 func TestMalformedTagsPanicAtConstruction(t *testing.T) {
 	for name, f := range map[string]func(){
-		"no title":        func() { palette.Action{Group: "G"}.Ext() },
-		"no group":        func() { palette.Action{Title: "T"}.Ext() },
-		"bad needs":       func() { palette.Action{Title: "T", Group: "G", When: &palette.When{Needs: "row"}}.Ext() },
-		"prompt arg":      func() { palette.Action{Title: "T", Group: "G", Args: map[string]string{"x": "prompt"}}.Ext() },
+		"no title":            func() { palette.Action{Group: "G"}.Ext() },
+		"no group":            func() { palette.Action{Title: "T"}.Ext() },
+		"bad needs":           func() { palette.Action{Title: "T", Group: "G", When: &palette.When{Needs: "row"}}.Ext() },
+		"form without prompt": func() { palette.Action{Title: "T", Group: "G", Form: &palette.Form{Submit: "Go"}}.Ext() },
+		"form without label": func() {
+			palette.Action{Title: "T", Group: "G", Args: map[string]string{"x": "prompt"}, Form: &palette.Form{}}.Ext()
+		},
 		"empty arg":       func() { palette.Action{Title: "T", Group: "G", Args: map[string]string{"x": ""}}.Ext() },
 		"contradiction":   func() { palette.Action{Title: "T", Group: "G", Confirm: true, NoConfirm: true}.Ext() },
 		"source no route": func() { palette.Source{Group: "G", Title: "T"}.Ext() },
@@ -209,5 +212,59 @@ func TestCheckRefusesMalformedConditions(t *testing.T) {
 	palette.Check(r, good)
 	if len(r.msgs) != 0 {
 		t.Errorf("a valid tag: %v", r.msgs)
+	}
+}
+
+type inviteBody struct {
+	Username string             `json:"username"`
+	Email    string             `json:"email"`
+	Age      int                `json:"age"`
+	Tags     []string           `json:"tags"`
+	Nested   struct{ A string } `json:"nested"`
+	Level    string             `json:"level" enum:"a,b"`
+}
+
+func apiWithBody(ext map[string]any) huma.API {
+	a := humago.New(http.NewServeMux(), huma.DefaultConfig("t", "1"))
+	huma.Register(a, op("invite-user", "POST", "/api/users", ext), func(context.Context, *struct{ Body inviteBody }) (*struct{ Body struct{} }, error) { return nil, nil })
+	return a
+}
+
+// A prompted argument (form step, @teb-ooo/ui 0.80) must be a single-value property of the JSON request body; Form names the button.
+func TestPromptArgumentsAndForm(t *testing.T) {
+	ok := palette.Action{Title: "Invite", Group: "Users", Args: map[string]string{"username": "prompt", "email": "prompt", "age": "prompt", "level": "prompt"}, Form: &palette.Form{Submit: "Invite"}}.Ext()
+	b, _ := json.Marshal(ok)
+	if !strings.Contains(string(b), `"form":{"submit":"Invite"}`) || !strings.Contains(string(b), `"username":"prompt"`) {
+		t.Fatalf("shape: %s", b)
+	}
+	r := &rec{}
+	palette.Check(r, apiWithBody(ok))
+	if len(r.msgs) != 0 {
+		t.Fatalf("a valid form: %v", r.msgs)
+	}
+	for name, args := range map[string]map[string]string{
+		"not a property": {"nope": "prompt"},
+		"an array":       {"tags": "prompt"},
+		"an object":      {"nested": "prompt"},
+	} {
+		tag := palette.Action{Title: "Invite", Group: "Users", Args: args}.Ext()
+		r := &rec{}
+		palette.Check(r, apiWithBody(tag))
+		if len(r.msgs) == 0 || !strings.Contains(strings.Join(r.msgs, " "), "cannot ask for") {
+			t.Errorf("%s: %v", name, r.msgs)
+		}
+	}
+	// an operation without a JSON body cannot prompt
+	noBody := api(op("do-thing", "POST", "/api/things", palette.Action{Title: "T", Group: "G", Args: map[string]string{"x": "prompt"}}.Ext()))
+	r = &rec{}
+	palette.Check(r, noBody)
+	if len(r.msgs) == 0 || !strings.Contains(strings.Join(r.msgs, " "), "no JSON request body") {
+		t.Errorf("no body: %v", r.msgs)
+	}
+	// a form key without prompt arguments in the document is refused too
+	r = &rec{}
+	palette.Check(r, api(op("do-thing", "POST", "/api/things", map[string]any{palette.Key: map[string]any{"title": "T", "group": "G", "form": map[string]any{"submit": "Go"}, "args": map[string]any{"x": "route.x"}}})))
+	if len(r.msgs) == 0 {
+		t.Error("a form without prompt arguments must be refused")
 	}
 }

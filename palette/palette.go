@@ -57,8 +57,15 @@ type After struct {
 	Navigate   string   `json:"navigate,omitempty"`
 }
 
+// Form is the text of the form step an action with "prompt" arguments opens.
+type Form struct {
+	Submit string `json:"submit,omitempty"` // the submit button's label, for example "Invite"
+}
+
 // Action is the tag of a mutating operation (not GET): it becomes a command. Args maps each path, query or body field to
-// `route.<param>`, `selection.<field>` or a literal (`prompt` arrives with the web side's phase 2 and is refused now).
+// `route.<param>`, `selection.<field>`, a literal, or "prompt": the person is asked for that field in a form step built from the operation's
+// JSON request body schema (the field must be a property of the body: a string, integer, number, boolean or string enum), and Form names the
+// form's submit button (@teb-ooo/ui 0.80).
 // Title and ConfirmText fill `{name}` from the selection, then the route parameters; a command whose names do not resolve is hidden.
 // Confirm asks "<title>?"; ConfirmText asks its own question; NoConfirm turns off the default confirm of a DELETE.
 type Action struct {
@@ -70,6 +77,7 @@ type Action struct {
 	ConfirmText string
 	NoConfirm   bool
 	After       *After
+	Form        *Form
 	Hint        string
 	Keywords    []string
 	// Role limits who sees the command: "admin" or "owner" (hidden from everyone else); empty shows it to everyone.
@@ -113,9 +121,17 @@ func (a Action) Validate() error {
 		switch v := a.Args[k]; {
 		case v == "":
 			p = append(p, fmt.Sprintf("argument %s is empty", k))
-		case v == "prompt":
-			p = append(p, fmt.Sprintf("argument %s is \"prompt\", which is not supported yet", k))
 		}
+	}
+	prompted := false
+	for _, v := range a.Args {
+		prompted = prompted || v == "prompt"
+	}
+	if a.Form != nil && !prompted {
+		p = append(p, "Form needs at least one argument marked \"prompt\"")
+	}
+	if a.Form != nil && strings.TrimSpace(a.Form.Submit) == "" {
+		p = append(p, "Form needs a Submit label")
 	}
 	return problems(p)
 }
@@ -155,6 +171,9 @@ func (a Action) Ext() map[string]any {
 	}
 	if a.After != nil {
 		m["after"] = a.After
+	}
+	if a.Form != nil {
+		m["form"] = a.Form
 	}
 	if a.Hint != "" {
 		m["hint"] = a.Hint
@@ -226,14 +245,14 @@ func Check(t testing.TB, api huma.API, exempt ...string) {
 				continue
 			}
 			label := fmt.Sprintf("operation %q (%s %s)", op.OperationID, method, path)
-			if msg := checkOperation(method, op); msg != "" {
+			if msg := checkOperation(api, method, op); msg != "" {
 				t.Errorf("%s: %s; see docs/go-api.md (palette)", label, msg)
 			}
 		}
 	}
 }
 
-func checkOperation(method string, op *huma.Operation) string {
+func checkOperation(api huma.API, method string, op *huma.Operation) string {
 	raw, has := op.Extensions[Key]
 	if !has {
 		if method == "GET" || method == "HEAD" || method == "OPTIONS" || method == "TRACE" {
@@ -284,10 +303,18 @@ func checkOperation(method string, op *huma.Operation) string {
 			return "an action needs a group"
 		}
 		if args, _ := x["args"].(map[string]any); args != nil {
-			for k, a := range args {
-				if a == "prompt" {
-					return fmt.Sprintf("argument %s is \"prompt\", which is not supported yet", k)
+			var prompted []string
+			for _, k := range sortedAnyKeys(args) {
+				if args[k] == "prompt" {
+					prompted = append(prompted, k)
 				}
+			}
+			if len(prompted) > 0 {
+				if msg := promptProblem(api, op, prompted); msg != "" {
+					return fmt.Sprintf("cannot ask for %s: %s", strings.Join(prompted, ", "), msg)
+				}
+			} else if _, hasForm := x["form"]; hasForm {
+				return `form needs at least one argument marked "prompt"`
 			}
 		}
 		if r, has := x["role"]; has {
@@ -315,6 +342,50 @@ func checkOperation(method string, op *huma.Operation) string {
 		return "x-palette is neither an action (title, group), a source (source) nor false"
 	}
 	return ""
+}
+
+// promptProblem checks that every prompted argument is a property of the operation's JSON request body (an object schema) and a single
+// value: a string, integer, number, boolean or string enum (not an array, an object or a oneOf/anyOf), as @teb-ooo/ui's paletteProblems does.
+func promptProblem(api huma.API, op *huma.Operation, prompted []string) string {
+	if op.RequestBody == nil {
+		return "the operation has no JSON request body to ask for"
+	}
+	mt := op.RequestBody.Content["application/json"]
+	if mt == nil || mt.Schema == nil {
+		return "the operation has no JSON request body to ask for"
+	}
+	body := resolve(api, mt.Schema)
+	if body == nil || (body.Type != "object" && body.Properties == nil) {
+		return "the JSON request body is not an object"
+	}
+	for _, name := range prompted {
+		prop := body.Properties[name]
+		if prop == nil {
+			return name + " is not a property of the request body"
+		}
+		ps := resolve(api, prop)
+		switch {
+		case ps == nil:
+			return name + " has no schema"
+		case len(ps.OneOf) > 0 || len(ps.AnyOf) > 0 || len(ps.AllOf) > 0:
+			return name + " is a oneOf/anyOf/allOf, not a single value"
+		case ps.Type == "array" || ps.Type == "object":
+			return name + " is an " + ps.Type + ", not a single value"
+		case ps.Type != "string" && ps.Type != "integer" && ps.Type != "number" && ps.Type != "boolean":
+			return name + " has type " + fmt.Sprintf("%q", ps.Type) + ", not a string, integer, number, boolean or string enum"
+		}
+	}
+	return ""
+}
+
+func resolve(api huma.API, s *huma.Schema) *huma.Schema {
+	if s != nil && s.Ref != "" {
+		if c := api.OpenAPI().Components; c != nil && c.Schemas != nil {
+			return c.Schemas.SchemaFromRef(s.Ref)
+		}
+		return nil
+	}
+	return s
 }
 
 var differsRE = regexp.MustCompile(`^(user|route)\.\w+$`)
