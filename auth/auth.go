@@ -58,6 +58,7 @@ type Auth struct {
 	owner      string
 	rl         ratelimit.Options
 	noRL       bool
+	entrance   string
 	loginRL    *ratelimit.Limiter
 	callbackRL *ratelimit.Limiter
 }
@@ -98,6 +99,19 @@ func (e *RateLimitedError) Error() string { return "auth: too many failed token 
 // instead of, the OIDC path. Users it returns are recorded with
 // CredentialToken. Without this option nothing changes.
 func WithTokenVerifier(v TokenVerifier) Option { return func(a *Auth) { a.tokenVerifier = v } }
+
+// Problem codes are the closed list the entrance page receives as `?problem=<code>` (see WithEntrance).
+const (
+	ProblemExpired     = "expired"     // the sign-in attempt expired, or cookies are disabled
+	ProblemRefused     = "refused"     // the identity service refused the sign-in
+	ProblemUnavailable = "unavailable" // the identity service could not be reached
+	ProblemFailed      = "failed"      // anything else that went wrong
+)
+
+// WithEntrance sends a sign-in problem on /auth/login and /auth/callback to the app's own entrance page (for example "/enter") as
+// `<path>?problem=<code>` (303), where the page shows it in its own words, instead of answering with the bare problem document.
+// Without it nothing changes. The path must be an absolute path of the app that does not redirect a signed-out visitor.
+func WithEntrance(path string) Option { return func(a *Auth) { a.entrance = path } }
 
 // WithSessionTTL sets the session lifetime (default DefaultSessionTTL).
 func WithSessionTTL(d time.Duration) Option { return func(a *Auth) { a.ttl = d } }
@@ -221,21 +235,21 @@ func sanitizeNext(next string) string {
 func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 	p, err := a.getProvider(r.Context())
 	if err != nil {
-		writeProblem(w, http.StatusBadGateway, "Identity service unavailable", "The sign-in service could not be reached. Try again shortly.")
+		a.fail(w, r, http.StatusBadGateway, ProblemUnavailable, "Identity service unavailable", "The sign-in service could not be reached. Try again shortly.")
 		return
 	}
 	state, err1 := randomString(24)
 	nonce, err2 := randomString(24)
 	verifier := oauth2.GenerateVerifier()
 	if err1 != nil || err2 != nil {
-		writeProblem(w, http.StatusInternalServerError, "Sign-in failed", "Could not generate login state.")
+		a.fail(w, r, http.StatusInternalServerError, ProblemFailed, "Sign-in failed", "Could not generate login state.")
 		return
 	}
 	exp := a.now().Add(10 * time.Minute)
 	v, err := seal(a.key, LoginCookieName, loginState{State: state, Nonce: nonce, Verifier: verifier,
 		Next: sanitizeNext(r.URL.Query().Get("next")), Expires: exp.Unix()})
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "Sign-in failed", "Could not store login state.")
+		a.fail(w, r, http.StatusInternalServerError, ProblemFailed, "Sign-in failed", "Could not store login state.")
 		return
 	}
 	http.SetCookie(w, baseCookie(LoginCookieName, v, "/auth", exp, 600))
@@ -248,63 +262,63 @@ func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	c, err := r.Cookie(LoginCookieName)
 	if err != nil {
-		writeProblem(w, http.StatusBadRequest, "Sign-in expired", "The sign-in attempt has expired or cookies are disabled. Start again from the login page.")
+		a.fail(w, r, http.StatusBadRequest, ProblemExpired, "Sign-in expired", "The sign-in attempt has expired or cookies are disabled. Start again from the login page.")
 		return
 	}
 	var ls loginState
 	if err := open(a.key, LoginCookieName, c.Value, &ls); err != nil || a.now().Unix() >= ls.Expires {
-		writeProblem(w, http.StatusBadRequest, "Sign-in expired", "The sign-in attempt has expired. Start again from the login page.")
+		a.fail(w, r, http.StatusBadRequest, ProblemExpired, "Sign-in expired", "The sign-in attempt has expired. Start again from the login page.")
 		return
 	}
 	http.SetCookie(w, expiredCookie(LoginCookieName, "/auth"))
 
 	q := r.URL.Query()
 	if subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(ls.State)) != 1 {
-		writeProblem(w, http.StatusBadRequest, "Sign-in failed", "The sign-in response did not match the request. Start again.")
+		a.fail(w, r, http.StatusBadRequest, ProblemFailed, "Sign-in failed", "The sign-in response did not match the request. Start again.")
 		return
 	}
 	if e := q.Get("error"); e != "" {
-		writeProblem(w, http.StatusUnauthorized, "Sign-in refused", "The identity service refused the sign-in ("+sanitizeToken(e)+").")
+		a.fail(w, r, http.StatusUnauthorized, ProblemRefused, "Sign-in refused", "The identity service refused the sign-in ("+sanitizeToken(e)+").")
 		return
 	}
 	code := q.Get("code")
 	if code == "" {
-		writeProblem(w, http.StatusBadRequest, "Sign-in failed", "The sign-in response carried no code.")
+		a.fail(w, r, http.StatusBadRequest, ProblemFailed, "Sign-in failed", "The sign-in response carried no code.")
 		return
 	}
 	p, err := a.getProvider(r.Context())
 	if err != nil {
-		writeProblem(w, http.StatusBadGateway, "Identity service unavailable", "The sign-in service could not be reached. Try again shortly.")
+		a.fail(w, r, http.StatusBadGateway, ProblemUnavailable, "Identity service unavailable", "The sign-in service could not be reached. Try again shortly.")
 		return
 	}
 	ctx := a.clientCtx(r.Context())
 	tok, err := a.oauthConfig(p).Exchange(ctx, code, oauth2.VerifierOption(ls.Verifier))
 	if err != nil {
-		writeProblem(w, http.StatusUnauthorized, "Sign-in failed", "The sign-in code could not be exchanged.")
+		a.fail(w, r, http.StatusUnauthorized, ProblemFailed, "Sign-in failed", "The sign-in code could not be exchanged.")
 		return
 	}
 	raw, _ := tok.Extra("id_token").(string)
 	if raw == "" {
-		writeProblem(w, http.StatusUnauthorized, "Sign-in failed", "The identity service returned no ID token.")
+		a.fail(w, r, http.StatusUnauthorized, ProblemFailed, "Sign-in failed", "The identity service returned no ID token.")
 		return
 	}
 	idt, err := p.Verifier(&oidc.Config{ClientID: a.cfg.ClientID, Now: a.now}).Verify(ctx, raw)
 	if err != nil {
-		writeProblem(w, http.StatusUnauthorized, "Sign-in failed", "The ID token could not be verified.")
+		a.fail(w, r, http.StatusUnauthorized, ProblemFailed, "Sign-in failed", "The ID token could not be verified.")
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(idt.Nonce), []byte(ls.Nonce)) != 1 {
-		writeProblem(w, http.StatusUnauthorized, "Sign-in failed", "The ID token nonce did not match.")
+		a.fail(w, r, http.StatusUnauthorized, ProblemFailed, "Sign-in failed", "The ID token nonce did not match.")
 		return
 	}
 	u, err := userFromClaims(idt.Subject, idt.Claims)
 	if err != nil {
-		writeProblem(w, http.StatusUnauthorized, "Sign-in failed", "The ID token claims could not be read.")
+		a.fail(w, r, http.StatusUnauthorized, ProblemFailed, "Sign-in failed", "The ID token claims could not be read.")
 		return
 	}
 	cookie, err := NewSessionCookie(a.key, u, a.ttl, a.now())
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "Sign-in failed", "Could not create the session.")
+		a.fail(w, r, http.StatusInternalServerError, ProblemFailed, "Sign-in failed", "Could not create the session.")
 		return
 	}
 	http.SetCookie(w, cookie)
@@ -349,6 +363,16 @@ func sanitizeToken(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// fail answers a sign-in problem: a redirect to the entrance page when WithEntrance is set, the problem document otherwise.
+func (a *Auth) fail(w http.ResponseWriter, r *http.Request, status int, code, title, detail string) {
+	if a.entrance != "" {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, a.entrance+"?problem="+code, http.StatusSeeOther)
+		return
+	}
+	writeProblem(w, status, title, detail)
 }
 
 func writeProblem(w http.ResponseWriter, status int, title, detail string) {

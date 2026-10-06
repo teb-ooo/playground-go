@@ -125,14 +125,14 @@ type env struct {
 	h    http.Handler
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...auth.Option) *env {
 	t.Helper()
 	idp := newFakeIDP(t)
 	idp.claims["user-1"] = map[string]any{"email": "ada@teb.ooo", "preferred_username": "ada",
 		"picture": "https://id.teb.ooo/avatar/user-1", "groups": []string{"admin"}}
 	idp.claims["user-2"] = map[string]any{"email": "bob@teb.ooo", "preferred_username": "bob"}
 	a, err := auth.New(auth.OIDCConfig{Issuer: idp.srv.URL, ClientID: "app", ClientSecret: "shh",
-		PublicURL: "https://app.example"}, testKey, auth.WithRateLimit(ratelimit.Options{Burst: 1000, Requests: 1000}))
+		PublicURL: "https://app.example"}, testKey, append([]auth.Option{auth.WithRateLimit(ratelimit.Options{Burst: 1000, Requests: 1000})}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -743,5 +743,41 @@ func TestMeOptionalAnonymous(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 200 || strings.Contains(w.Body.String(), "anonymous") || !strings.Contains(w.Body.String(), `"email":"ada@teb.ooo"`) {
 		t.Errorf("signed in: %d %s", w.Code, w.Body)
+	}
+}
+
+// With WithEntrance a browser's sign-in problem goes to the app's own page as ?problem=<code> (a closed list), never a bare document.
+func TestEntranceReceivesSignInProblems(t *testing.T) {
+	e := newEnv(t, auth.WithEntrance("/enter"))
+	lc, q := e.login(t, "")
+	code := e.issueCode(q, "user-1")
+	state := url.QueryEscape(q.Get("state"))
+	for name, tc := range map[string]struct {
+		target  string
+		cookies []*http.Cookie
+		problem string
+	}{
+		"no login cookie": {"/auth/callback?code=" + code + "&state=" + state, nil, "expired"},
+		"wrong state":     {"/auth/callback?code=" + code + "&state=nope", []*http.Cookie{lc}, "failed"},
+		"provider error":  {"/auth/callback?error=access_denied&state=" + state, []*http.Cookie{lc}, "refused"},
+		"bad code":        {"/auth/callback?code=bogus&state=" + state, []*http.Cookie{lc}, "failed"},
+	} {
+		w := e.do("GET", tc.target, tc.cookies, nil)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/enter?problem="+tc.problem || cookieNamed(w, auth.CookieName) != nil {
+			t.Errorf("%s: status %d location %q", name, w.Code, w.Header().Get("Location"))
+		}
+	}
+	// the issuer cannot be reached
+	a, err := auth.New(auth.OIDCConfig{Issuer: "http://127.0.0.1:1", ClientID: "c", PublicURL: "https://a.example"}, testKey,
+		auth.WithEntrance("/enter"), auth.WithHTTPClient(&http.Client{Timeout: time.Second}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	a.Register(humago.New(mux, huma.DefaultConfig("t", "1")), mux)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/auth/login", nil))
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/enter?problem=unavailable" {
+		t.Errorf("unreachable issuer: %d %q", w.Code, w.Header().Get("Location"))
 	}
 }
