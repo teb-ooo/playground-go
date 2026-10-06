@@ -42,7 +42,7 @@ func TestPaginationRule(t *testing.T) {
 	// the page package satisfies it
 	expect(t, runList[pagedIn, page.Body[goodOut]](listOp()))
 	// an items array without the parameters
-	expect(t, runList[noParamsIn, page.Body[goodOut]](listOp()), "lacks the limit or cursor query parameter (API-jvg)")
+	expect(t, runList[noParamsIn, page.Body[goodOut]](listOp()), "lacks the limit or cursor query parameter (docs/go-api.md, Pagination)")
 	// a limit without bounds
 	expect(t, runList[badLimitIn, page.Body[goodOut]](listOp()), "limit parameter of a list operation must be an integer with minimum, maximum and default")
 	// parameters but no next_cursor
@@ -54,7 +54,7 @@ func TestPaginationRule(t *testing.T) {
 	post.Method = http.MethodPost
 	post.OperationID = "create-widget"
 	expect(t, runList[noParamsIn, page.Body[goodOut]](post))
-	if msgs := runContract[goodOut](goodOp()); len(msgs) != 0 && strings.Contains(strings.Join(msgs, " "), "API-jvg") {
+	if msgs := runContract[goodOut](goodOp()); len(msgs) != 0 && strings.Contains(strings.Join(msgs, " "), "the pagination contract") {
 		t.Errorf("a GET without an items array is not a list: %v", msgs)
 	}
 }

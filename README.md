@@ -89,7 +89,7 @@ Choices the document leaves open are in `/srv/playground/brain/docs/decisions/00
 
 ## page
 
-`page` is the one way to paginate a list operation (rule API-jvg): `page.Params` (the `limit` and `cursor` query parameters), `page.Body[T]` (`items`, `next_cursor`), `page.Encode`/`page.Decode` (an opaque keyset cursor; a malformed cursor is a 400) and `page.Trim` (the fetch-limit-plus-one pattern). `openapimcp.ParityCheck` fails a GET whose 200 body has an `items` array but lacks `limit`, `cursor` or `next_cursor`. See the package comment and docs/go-api.md.
+`page` is the one way to paginate a list operation (docs/go-api.md, Pagination): `page.Params` (the `limit` and `cursor` query parameters), `page.Body[T]` (`items`, `next_cursor`), `page.Encode`/`page.Decode` (an opaque keyset cursor; a malformed cursor is a 400) and `page.Trim` (the fetch-limit-plus-one pattern). `openapimcp.ParityCheck` fails a GET whose 200 body has an `items` array but lacks `limit`, `cursor` or `next_cursor`. See the package comment and docs/go-api.md.
 
 ## palette
 

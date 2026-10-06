@@ -202,11 +202,11 @@ func checkContract(t testing.TB, api huma.API, cfg *parityConfig, method, path s
 	}
 }
 
-// paginationFix explains how to satisfy the list rule (API-jvg), including the way out for a list that is bounded by nature.
+// paginationFix explains how to satisfy the list rule (docs/go-api.md, Pagination), including the way out for a list that is bounded by nature.
 const paginationFix = `use the page package of playground-go (embed page.Params in the input, answer page.Body[T]); a list that is bounded by ` +
 	`nature (a fixed handful of rows) is exempted with openapimcp.WithExempt or the ExemptExtension and a reason`
 
-// checkPagination applies API-jvg to a GET whose 200 body is an object with an `items` array: it needs the `limit` query parameter (an
+// checkPagination applies the pagination contract to a GET whose 200 body is an object with an `items` array: it needs the `limit` query parameter (an
 // integer with minimum, maximum and default), the `cursor` query parameter (a string) and a `next_cursor` property.
 func checkPagination(api huma.API, op *huma.Operation, fail func(problem, fix string)) {
 	r := op.Responses["200"]
@@ -229,7 +229,7 @@ func checkPagination(api huma.API, op *huma.Operation, fail func(problem, fix st
 	}
 	if items == nil || items.Type != "array" {
 		if named {
-			fail("a list-* operation must answer an object with an items array and next_cursor, not "+bodyShape(body)+" (API-jvg, API-fey)", paginationFix)
+			fail("a list-* operation must answer an object with an items array and next_cursor, not "+bodyShape(body)+" (docs/go-api.md, Pagination)", paginationFix)
 		}
 		return
 	}
@@ -246,17 +246,17 @@ func checkPagination(api huma.API, op *huma.Operation, fail func(problem, fix st
 		}
 	}
 	if limit == nil || cursor == nil {
-		fail("a list operation (the 200 body has an items array) lacks the limit or cursor query parameter (API-jvg)", paginationFix)
+		fail("a list operation (the 200 body has an items array) lacks the limit or cursor query parameter (docs/go-api.md, Pagination)", paginationFix)
 		return
 	}
 	if ls := resolve(api, limit.Schema); ls == nil || ls.Type != "integer" || ls.Minimum == nil || ls.Maximum == nil || ls.Default == nil {
-		fail("the limit parameter of a list operation must be an integer with minimum, maximum and default (API-jvg)", paginationFix)
+		fail("the limit parameter of a list operation must be an integer with minimum, maximum and default (docs/go-api.md, Pagination)", paginationFix)
 	}
 	if cs := resolve(api, cursor.Schema); cs == nil || cs.Type != "string" {
-		fail("the cursor parameter of a list operation must be a string (API-jvg)", paginationFix)
+		fail("the cursor parameter of a list operation must be a string (docs/go-api.md, Pagination)", paginationFix)
 	}
 	if _, ok := body.Properties["next_cursor"]; !ok {
-		fail("the 200 body of a list operation must have a next_cursor property (API-jvg)", paginationFix)
+		fail("the 200 body of a list operation must have a next_cursor property (docs/go-api.md, Pagination)", paginationFix)
 	}
 }
 

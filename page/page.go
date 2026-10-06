@@ -1,4 +1,4 @@
-// Package page is the playground's one way to paginate a list operation (docs/go-api.md, rule API-jvg): the standard query
+// Package page is the playground's one way to paginate a list operation (docs/go-api.md): the standard query
 // parameters, the standard response body, and an opaque keyset cursor.
 //
 // An operation takes Params in its input, fetches limit+1 rows after the cursor's key (keyset paging, never OFFSET), and answers
