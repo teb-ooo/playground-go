@@ -217,11 +217,20 @@ func checkPagination(api huma.API, op *huma.Operation, fail func(problem, fix st
 	for _, mt := range r.Content {
 		body = resolve(api, mt.Schema)
 	}
-	if body == nil || body.Properties == nil {
+	// An operation named list-* IS a list (kebab verb-noun, docs/go-api.md): it must answer {items: [...], next_cursor} even when it
+	// returns a bare array or an object without items, which the items check below would not notice.
+	named := strings.HasPrefix(op.OperationID, "list-")
+	if body == nil {
 		return
 	}
-	items := resolve(api, body.Properties["items"])
+	var items *huma.Schema
+	if body.Properties != nil {
+		items = resolve(api, body.Properties["items"])
+	}
 	if items == nil || items.Type != "array" {
+		if named {
+			fail("a list-* operation must answer an object with an items array and next_cursor, not "+bodyShape(body)+" (API-jvg, API-fey)", paginationFix)
+		}
 		return
 	}
 	var limit, cursor *huma.Param
@@ -249,6 +258,17 @@ func checkPagination(api huma.API, op *huma.Operation, fail func(problem, fix st
 	if _, ok := body.Properties["next_cursor"]; !ok {
 		fail("the 200 body of a list operation must have a next_cursor property (API-jvg)", paginationFix)
 	}
+}
+
+// bodyShape names the shape of a response body for the pagination message.
+func bodyShape(s *huma.Schema) string {
+	switch {
+	case s.Type == "array":
+		return "a bare array"
+	case s.Type == "object" || s.Properties != nil:
+		return "an object without an items array"
+	}
+	return "a " + s.Type + " body"
 }
 
 func checkSchema(api huma.API, s *huma.Schema, where, name string, seen map[*huma.Schema]bool, fail func(problem, fix string)) {

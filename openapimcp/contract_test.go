@@ -25,7 +25,7 @@ var session = []map[string][]string{{"session": {}}, {"bearer": {}}}
 
 func goodOp() huma.Operation {
 	return huma.Operation{
-		OperationID: "list-widgets", Method: http.MethodGet, Path: "/api/widgets",
+		OperationID: "get-widgets", Method: http.MethodGet, Path: "/api/widgets",
 		Summary: "List widgets", Description: "Lists widgets.", Tags: []string{"widgets"}, Security: session,
 	}
 }
@@ -156,7 +156,7 @@ func TestContractIDRule(t *testing.T) {
 	exempt := goodOp()
 	exempt.Extensions = map[string]any{openapimcp.ExemptExtension: "audit entry ids are database sequence numbers"}
 	expect(t, runContract[integer](exempt))
-	expect(t, runContract[bare](goodOp(), openapimcp.WithExempt("list-widgets")))
+	expect(t, runContract[bare](goodOp(), openapimcp.WithExempt("get-widgets")))
 }
 
 func TestContractRequestBodyChecked(t *testing.T) {
