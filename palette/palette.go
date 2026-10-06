@@ -23,6 +23,8 @@ package palette
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -37,9 +39,16 @@ const (
 )
 
 // When says where an action applies: a router route pattern (`/rule/$code`) and whether a selected row is needed.
+//
+// Field shows the command only while the published selection holds the value: a map of selection field to a string, a number or a bool, or
+// to a non-empty list of them (any of the values), for example Field: map[string]any{"status": "disabled"} or {"status": []string{"staged", "draft"}};
+// it implies Needs "selection". Differs keeps the command off a row that equals a value of the viewer or the route: a map of selection field to
+// "user.<field>" or "route.<param>", for example Differs: map[string]string{"id": "user.subject"} so "Disable" never shows on one's own row.
 type When struct {
-	Route string `json:"route,omitempty"`
-	Needs string `json:"needs,omitempty"` // "" or "selection"
+	Route   string            `json:"route,omitempty"`
+	Needs   string            `json:"needs,omitempty"` // "" or "selection"
+	Field   map[string]any    `json:"field,omitempty"`
+	Differs map[string]string `json:"differs,omitempty"`
 }
 
 // After says what happens after a success: refetch lists whose address starts with Invalidate, and/or go to Navigate.
@@ -63,6 +72,8 @@ type Action struct {
 	After       *After
 	Hint        string
 	Keywords    []string
+	// Role limits who sees the command: "admin" or "owner" (hidden from everyone else); empty shows it to everyone.
+	Role string
 }
 
 // Source is the tag of a list or search operation (GET): the palette searches it while typing. Param is the query parameter that
@@ -75,6 +86,8 @@ type Source struct {
 	Param    string
 	MinChars int
 	Limit    int
+	// Role limits who sees the source: "admin" or "owner"; empty shows it to everyone. It travels beside `source` in the tag, not inside it.
+	Role string
 }
 
 // Validate reports what is wrong with the action, or nil.
@@ -91,6 +104,10 @@ func (a Action) Validate() error {
 	}
 	if a.Confirm && a.NoConfirm {
 		p = append(p, "Confirm and NoConfirm contradict each other")
+	}
+	p = append(p, roleProblem(a.Role)...)
+	if a.When != nil {
+		p = append(p, whenProblems(a.When)...)
 	}
 	for _, k := range sortedKeys(a.Args) {
 		switch v := a.Args[k]; {
@@ -112,6 +129,7 @@ func (s Source) Validate() error {
 	if s.MinChars < 0 || s.Limit < 0 {
 		p = append(p, "minChars and limit are not negative")
 	}
+	p = append(p, roleProblem(s.Role)...)
 	return problems(p)
 }
 
@@ -144,6 +162,9 @@ func (a Action) Ext() map[string]any {
 	if len(a.Keywords) > 0 {
 		m["keywords"] = a.Keywords
 	}
+	if a.Role != "" {
+		m["role"] = a.Role
+	}
 	return map[string]any{Key: m}
 }
 
@@ -165,7 +186,11 @@ func (s Source) Ext() map[string]any {
 	if s.Limit > 0 {
 		m["limit"] = s.Limit
 	}
-	return map[string]any{Key: map[string]any{"source": m}}
+	tag := map[string]any{"source": m}
+	if s.Role != "" {
+		tag["role"] = s.Role // beside `source`, as @teb-ooo/ui reads it
+	}
+	return map[string]any{Key: tag}
 }
 
 // None says an operation deliberately has no command (`x-palette: false`) and why; the reason is required.
@@ -242,6 +267,11 @@ func checkOperation(method string, op *huma.Operation) string {
 			if s.Source.Group == "" || s.Source.Title == "" || s.Source.Route == "" {
 				return "a source needs group, title and route"
 			}
+			if r, has := x["role"]; has {
+				if rs, _ := r.(string); roleProblem(rs) != nil || rs == "" {
+					return `role must be "admin" or "owner"`
+				}
+			}
 			return ""
 		}
 		if _, ok := x["title"]; !ok {
@@ -260,10 +290,93 @@ func checkOperation(method string, op *huma.Operation) string {
 				}
 			}
 		}
+		if r, has := x["role"]; has {
+			if rs, _ := r.(string); roleProblem(rs) != nil || rs == "" {
+				return `role must be "admin" or "owner"`
+			}
+		}
+		if w, _ := x["when"].(map[string]any); w != nil {
+			if d, _ := w["differs"].(map[string]any); d != nil {
+				for _, k := range sortedAnyKeys(d) {
+					if v, _ := d[k].(string); !differsRE.MatchString(v) {
+						return fmt.Sprintf(`when.differs.%s must be "user.<field>" or "route.<param>"`, k)
+					}
+				}
+			}
+			if f, _ := w["field"].(map[string]any); f != nil {
+				for _, k := range sortedAnyKeys(f) {
+					if !fieldValueOK(f[k]) {
+						return fmt.Sprintf("when.field.%s must be a string, number or bool, or a non-empty list of them", k)
+					}
+				}
+			}
+		}
 	default:
 		return "x-palette is neither an action (title, group), a source (source) nor false"
 	}
 	return ""
+}
+
+var differsRE = regexp.MustCompile(`^(user|route)\.\w+$`)
+
+func roleProblem(role string) []string {
+	if role != "" && role != "admin" && role != "owner" {
+		return []string{fmt.Sprintf("role is %q, not \"admin\" or \"owner\"", role)}
+	}
+	return nil
+}
+
+// scalarOK reports whether v is a string, a number or a bool.
+func scalarOK(v any) bool {
+	switch v.(type) {
+	case string, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+		return true
+	}
+	return false
+}
+
+// fieldValueOK: a scalar, or a non-empty list of scalars.
+func fieldValueOK(v any) bool {
+	if scalarOK(v) {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		return false
+	}
+	if rv.Len() == 0 {
+		return false
+	}
+	for i := 0; i < rv.Len(); i++ {
+		if !scalarOK(rv.Index(i).Interface()) {
+			return false
+		}
+	}
+	return true
+}
+
+func whenProblems(w *When) []string {
+	var p []string
+	for _, k := range sortedAnyKeys(w.Field) {
+		if !fieldValueOK(w.Field[k]) {
+			p = append(p, fmt.Sprintf("when.field.%s must be a string, number or bool, or a non-empty list of them", k))
+		}
+	}
+	for _, k := range sortedKeys(w.Differs) {
+		if !differsRE.MatchString(w.Differs[k]) {
+			p = append(p, fmt.Sprintf("when.differs.%s must be \"user.<field>\" or \"route.<param>\"", k))
+		}
+	}
+	return p
+}
+
+func sortedAnyKeys(m map[string]any) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	slices.Sort(ks)
+	return ks
 }
 
 func sortedKeys(m map[string]string) []string {

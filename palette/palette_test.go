@@ -128,3 +128,86 @@ func TestTagIsInTheOpenAPIDocument(t *testing.T) {
 		t.Errorf("delete tag: %v %v", v, ok)
 	}
 }
+
+// when.field, when.differs and role (@teb-ooo/ui 0.77 to 0.79): the tag shape the web side reads, and the same refusals as its paletteProblems.
+func TestWhenFieldDiffersAndRole(t *testing.T) {
+	a := palette.Action{
+		Title: "Enable {username}", Group: "Users", Role: "admin",
+		When: &palette.When{Route: "/users", Field: map[string]any{"status": "disabled", "kind": []string{"a", "b"}, "n": 3, "ok": true}, Differs: map[string]string{"id": "user.subject", "p": "route.code"}},
+		Args: map[string]string{"id": "selection.id"},
+	}
+	b, _ := json.Marshal(a.Ext())
+	var tag struct {
+		P struct {
+			Role string `json:"role"`
+			When struct {
+				Field   map[string]any    `json:"field"`
+				Differs map[string]string `json:"differs"`
+			} `json:"when"`
+		} `json:"x-palette"`
+	}
+	if err := json.Unmarshal(b, &tag); err != nil {
+		t.Fatal(err)
+	}
+	if tag.P.Role != "admin" || tag.P.When.Field["status"] != "disabled" || tag.P.When.Differs["id"] != "user.subject" || len(tag.P.When.Field) != 4 {
+		t.Fatalf("shape: %s", b)
+	}
+	// a source's role travels beside source, not inside it
+	sb, _ := json.Marshal(palette.Source{Group: "G", Title: "{n}", Route: "/x", Role: "owner"}.Ext())
+	if string(sb) != `{"x-palette":{"role":"owner","source":{"group":"G","route":"/x","title":"{n}"}}}` {
+		t.Errorf("source role: %s", sb)
+	}
+	for name, f := range map[string]func(){
+		"empty field list": func() {
+			palette.Action{Title: "T", Group: "G", When: &palette.When{Field: map[string]any{"s": []string{}}}}.Ext()
+		},
+		"object field value": func() {
+			palette.Action{Title: "T", Group: "G", When: &palette.When{Field: map[string]any{"s": map[string]int{"a": 1}}}}.Ext()
+		},
+		"bad differs": func() {
+			palette.Action{Title: "T", Group: "G", When: &palette.When{Differs: map[string]string{"id": "subject"}}}.Ext()
+		},
+		"bad role":        func() { palette.Action{Title: "T", Group: "G", Role: "root"}.Ext() },
+		"bad source role": func() { palette.Source{Group: "G", Title: "T", Route: "/x", Role: "everyone"}.Ext() },
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: no panic", name)
+				}
+			}()
+			f()
+		}()
+	}
+}
+
+// Check reads the tags as JSON, like the web side, and refuses the same malformed conditions.
+func TestCheckRefusesMalformedConditions(t *testing.T) {
+	mk := func(tag map[string]any) huma.API {
+		return api(op("do-thing", "POST", "/api/things", map[string]any{palette.Key: tag}))
+	}
+	for name, tag := range map[string]map[string]any{
+		"empty field list": {"title": "T", "group": "G", "when": map[string]any{"field": map[string]any{"s": []any{}}}},
+		"bad differs":      {"title": "T", "group": "G", "when": map[string]any{"differs": map[string]any{"id": "subject"}}},
+		"bad role":         {"title": "T", "group": "G", "role": "root"},
+		"bad source role":  {"source": map[string]any{"group": "G", "title": "T", "route": "/x"}, "role": "all"},
+	} {
+		method := "POST"
+		a := mk(tag)
+		if _, isSource := tag["source"]; isSource {
+			method = "GET"
+			a = api(op("list-things", method, "/api/things", map[string]any{palette.Key: tag}))
+		}
+		r := &rec{}
+		palette.Check(r, a)
+		if len(r.msgs) == 0 {
+			t.Errorf("%s: Check accepted it", name)
+		}
+	}
+	good := mk(map[string]any{"title": "T", "group": "G", "role": "admin", "when": map[string]any{"field": map[string]any{"s": []any{"a", 1.0, true}}, "differs": map[string]any{"id": "user.subject"}}})
+	r := &rec{}
+	palette.Check(r, good)
+	if len(r.msgs) != 0 {
+		t.Errorf("a valid tag: %v", r.msgs)
+	}
+}
