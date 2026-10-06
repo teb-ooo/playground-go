@@ -106,7 +106,8 @@ type Frame struct {
 // PublishOption narrows an event.
 type PublishOption func(*Event)
 
-// WithID names the record that changed, for a detail query. Opaque to the hub.
+// WithID names the record that changed. It travels in the event and reaches the client's onEvent handler; @teb-ooo/web's useLive does
+// not use it to narrow which queries refetch (every query of the resource refetches). Opaque to the hub.
 func WithID(id string) PublishOption { return func(e *Event) { e.ID = id } }
 
 // HubOption configures NewHub.
