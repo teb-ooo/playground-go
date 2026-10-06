@@ -1,6 +1,6 @@
 # keys
 
-Platform API keys, verified offline in every app. A key is `pk_` followed by a compact ES256 JWS that playd issues for a person; an app needs no code, no table and no secret to accept it: `playground.Config.NewAuth()` installs the verifier (when `PLAYGROUND_DOMAIN` is set).
+Platform API keys, verified offline in every app. A key is `pk_` followed by a compact ES256 JWS that playd issues for a user; an app needs no code, no table and no secret to accept it: `playground.Config.NewAuth()` installs the verifier (when `PLAYGROUND_DOMAIN` is set).
 
 A client sends `Authorization: Bearer pk_...` to `/mcp` or any `/api/` route.
 
@@ -39,7 +39,7 @@ A key reaching the app through MCP is filtered by the same rules (see `openapimc
 
 ## Agent keys and `act`
 
-A key issued to an agent carries one more signed claim, `act`: the name of the app the agent acts for (for example `bd`). Person keys have none. The verifier checks that a present `act` is an app name (`^[a-z][a-z0-9-]{1,30}$`) and refuses the key (401) otherwise. It is exposed as `auth.User.Agent` and `auth.AgentFromContext(ctx)`: the app an agent key acts for, empty for sessions, person keys and tokens (only the key credential can set it). The key's `sub` and `email` are the shared `platform` identity, so `Subject` alone cannot tell two agents apart.
+A key issued to an agent carries one more signed claim, `act`: the name of the app the agent acts for (for example `bd`). User keys have none. The verifier checks that a present `act` is an app name (`^[a-z][a-z0-9-]{1,30}$`) and refuses the key (401) otherwise. It is exposed as `auth.User.Agent` and `auth.AgentFromContext(ctx)`: the app an agent key acts for, empty for sessions, user keys and tokens (only the key credential can set it). The key's `sub` and `email` are the shared `platform` identity, so `Subject` alone cannot tell two agents apart.
 
 `act` grants nothing and the library enforces nothing on it: the scope (`<app>:read|write|admin`) only says the caller may use this app at all. The recommended handler pattern is that the app compares `act` with the owner of the resource it touches and answers 403 when they differ:
 

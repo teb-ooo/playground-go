@@ -35,7 +35,7 @@ type paramSpec struct {
 
 // Tool is one MCP tool derived from one OpenAPI operation.
 // RequireUserInteractionExtension is the operation Extension key that makes the generated MCP tool carry
-// `_meta["anthropic/requiresUserInteraction"] = true`: Claude Code then prompts the person before every call, in every permission
+// `_meta["anthropic/requiresUserInteraction"] = true`: Claude Code then prompts the user before every call, in every permission
 // mode, and an allow rule cannot skip the prompt. Use it for operations that need a human's approval (for example applying a rule change).
 //
 //	huma.Operation{..., Extensions: map[string]any{openapimcp.RequireUserInteractionExtension: true}}
@@ -67,7 +67,7 @@ type Tool struct {
 	Method string
 	Path   string
 
-	// RequireUserInteraction marks the tool so that Claude Code always asks the person before calling it (even in bypass mode
+	// RequireUserInteraction marks the tool so that Claude Code always asks the user before calling it (even in bypass mode
 	// and with an allow rule): set with the operation extension RequireUserInteractionExtension.
 	RequireUserInteraction bool
 

@@ -15,7 +15,7 @@ import (
 // relay uses it to end a degraded state.
 const Connected = "connected"
 
-// DegradedReason is what people are told while a relayed source is down. No internals.
+// DegradedReason is what users are told while a relayed source is down. No internals.
 const DegradedReason = "live updates are delayed: the source of changes is unavailable"
 
 // UpstreamEvent is one event of the upstream stream: its SSE name, id and data.

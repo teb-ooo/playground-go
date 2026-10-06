@@ -9,7 +9,7 @@
 //	q, err := emb.Embed(ctx, []string{"what did I write about X"}, embed.Query) // search with this
 //	rows, err := pool.Query(ctx, `SELECT id FROM notes ORDER BY embedding <=> $1 LIMIT 10`, embed.Vector(q[0]))
 //
-// Use Passage for the text you store and Query for the text a person types: bge (and e5) models are trained with different
+// Use Passage for the text you store and Query for the text a user types: bge (and e5) models are trained with different
 // prefixes for the two, and the client applies the right one for the configured model. Tests use Fake, which needs no service.
 //
 // Endpoints relied on (text-embeddings-inference): POST /embed with {"inputs":[...],"normalize":true,"truncate":true},

@@ -64,7 +64,7 @@ func Mount(mux *http.ServeMux, hub *Hub, opts ...Option) {
 }
 
 // Handler is the stream. It answers 401 problem+json when nobody is signed in, 429 problem+json (Retry-After: 5)
-// when the person already holds the maximum number of streams, and otherwise 200 text/event-stream: a `: live`
+// when the user already holds the maximum number of streams, and otherwise 200 text/event-stream: a `: live`
 // comment at once (headers out, so the client counts the stream live), then `event: change` frames, `: ping`
 // comments, and `event: degraded`. It ends when the client leaves, the hub's subscription is cancelled or the maximum
 // lifetime passes.

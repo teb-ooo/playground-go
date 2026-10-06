@@ -3,7 +3,7 @@
 // Message it is given: recipients, subject, and a plain text and/or HTML body.
 // On staging it rewrites every recipient to MAIL_STAGING_SINK and prefixes the
 // subject with "[staging <app>]" so agents can exercise email without reaching
-// real people. Message bodies are never logged.
+// real users. Message bodies are never logged.
 //
 // # Templates belong to the app
 //

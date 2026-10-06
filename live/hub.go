@@ -23,15 +23,15 @@ import (
 	"github.com/teb-ooo/playground-go/auth"
 )
 
-// DefaultMaxPerUser is how many streams one person may hold open at once (browser tabs).
+// DefaultMaxPerUser is how many streams one user may hold open at once (browser tabs).
 const DefaultMaxPerUser = 8
 
 // maxPending is how many distinct events a slow subscriber may have queued before they collapse into one event that
 // names no resource (the client then refreshes everything): memory per subscriber stays bounded.
 const maxPending = 256
 
-// ErrTooManyStreams is returned by Subscribe when the person already holds the maximum number of streams.
-var ErrTooManyStreams = errors.New("live: too many streams open for this person")
+// ErrTooManyStreams is returned by Subscribe when the user already holds the maximum number of streams.
+var ErrTooManyStreams = errors.New("live: too many streams open for this user")
 
 // Audience says who is told about an event. Build one with Everyone, Subject, Admins or Project.
 type Audience struct {
@@ -50,16 +50,16 @@ const (
 	audProject
 )
 
-// Everyone reaches every signed-in person.
+// Everyone reaches every signed-in user.
 func Everyone() Audience { return Audience{kind: audEveryone} }
 
-// Subject reaches the person with this identity subject (all their tabs). An empty subject reaches no one.
+// Subject reaches the user with this identity subject (all their tabs). An empty subject reaches no one.
 func Subject(sub string) Audience { return Audience{kind: audSubject, subject: sub} }
 
 // Admins reaches administrators (auth.User.IsAdmin).
 func Admins() Audience { return Audience{kind: audAdmins} }
 
-// Project reaches the people who may see the named project, as decided by the hub's WithProjectAccess function
+// Project reaches the users who may see the named project, as decided by the hub's WithProjectAccess function
 // (administrators when the hub has none: it fails closed). The name is also carried in the event as "project", so a
 // client can narrow a detail query.
 func Project(name string) Audience { return Audience{kind: audProject, project: name} }
@@ -112,7 +112,7 @@ func WithID(id string) PublishOption { return func(e *Event) { e.ID = id } }
 // HubOption configures NewHub.
 type HubOption func(*Hub)
 
-// WithMaxPerUser sets the number of simultaneous streams one person may hold (default DefaultMaxPerUser).
+// WithMaxPerUser sets the number of simultaneous streams one user may hold (default DefaultMaxPerUser).
 func WithMaxPerUser(n int) HubOption { return func(h *Hub) { h.maxPerUser = n } }
 
 // WithProjectAccess decides who may see a project, for Project audiences. Without it Project events reach
@@ -168,7 +168,7 @@ func (h *Hub) Publish(resource string, aud Audience, opts ...PublishOption) {
 }
 
 // Degraded tells every subscriber that the source of changes is down (event "degraded"); live updates may be late
-// until the next Publish, which clears it. New subscribers are told too. reason is shown to people: keep it short and
+// until the next Publish, which clears it. New subscribers are told too. reason is shown to users: keep it short and
 // free of internals.
 func (h *Hub) Degraded(reason string) {
 	h.mu.Lock()

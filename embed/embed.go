@@ -21,7 +21,7 @@ type Kind int
 const (
 	// Passage is text you store and search through (a note, a document chunk).
 	Passage Kind = iota
-	// Query is text a person searches with.
+	// Query is text a user searches with.
 	Query
 )
 

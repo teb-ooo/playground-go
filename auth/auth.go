@@ -68,7 +68,7 @@ type Option func(*Auth)
 // WithHTTPClient sets the client used to talk to the issuer.
 func WithHTTPClient(c *http.Client) Option { return func(a *Auth) { a.client = c } }
 
-// WithOwner sets the app owner's email (APP_OWNER). GET /auth/me then reports is_owner for the person whose email
+// WithOwner sets the app owner's email (APP_OWNER). GET /auth/me then reports is_owner for the user whose email
 // matches it, compared case-insensitively. An empty owner means nobody is the owner.
 func WithOwner(email string) Option {
 	return func(a *Auth) { a.owner = strings.ToLower(strings.TrimSpace(email)) }

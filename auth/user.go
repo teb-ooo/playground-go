@@ -10,7 +10,7 @@ import (
 // AdminGroup is the groups claim value that grants administrator rights.
 const AdminGroup = "admin"
 
-// User is the signed-in person, as carried by the session cookie or derived
+// User is the signed-in user, as carried by the session cookie or derived
 // from a bearer token.
 type User struct {
 	Subject  string
@@ -22,7 +22,7 @@ type User struct {
 	// scoped OAuth token. Empty for sessions. See ScopesEnforced for when they apply.
 	Scopes []string
 	// Agent is the app an agent key acts for, from the signed `act` claim;
-	// empty for sessions, person keys and tokens. Middleware sets it only for
+	// empty for sessions, user keys and tokens. Middleware sets it only for
 	// CredentialKey. It carries no permission by itself: apps decide.
 	Agent string
 }
