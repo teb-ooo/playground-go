@@ -1,6 +1,9 @@
 // Package log provides structured JSON logging to stdout with secret
 // redaction, and HTTP request logging middleware.
 //
+// Transport errors: the address Go puts in a *url.Error (`Get "https://host/path?token=..."`) is replaced by [url removed] in every message,
+// attribute and rendered error, since the address of an upstream call can carry a token, a flow or a person's id.
+//
 // Redaction: the values of every environment variable whose name ends in
 // _KEY, _SECRET, _TOKEN or _PASSWORD are collected when a logger is created,
 // and any occurrence of such a value in a log message or attribute is
@@ -14,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -98,11 +102,21 @@ type redactor struct {
 	secrets []string
 }
 
+// urlErrorRE matches the address Go's transport errors (*url.Error) put in their text: `Get "https://host/path?token=..."`. The address of
+// an upstream call can carry a token, a flow or an id of a person, so it is dropped from every logged line (rule DAT-cld).
+var urlErrorRE = regexp.MustCompile(`\b(Get|Post|Put|Patch|Delete|Head|Options|Connect|Trace) "[a-zA-Z][a-zA-Z0-9+.-]*://[^"]*"`)
+
+// URLRemoved replaces the address in a transport error's text.
+const URLRemoved = "[url removed]"
+
 func (r *redactor) scrub(s string) string {
 	for _, sec := range r.secrets {
 		if strings.Contains(s, sec) {
 			s = strings.ReplaceAll(s, sec, Redacted)
 		}
+	}
+	if strings.Contains(s, "://") {
+		s = urlErrorRE.ReplaceAllString(s, `$1 "`+URLRemoved+`"`)
 	}
 	return s
 }

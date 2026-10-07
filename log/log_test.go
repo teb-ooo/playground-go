@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -149,5 +150,29 @@ func TestLevelFromEnv(t *testing.T) {
 		if got := flog.LevelFromEnv("TEST_LOG_LEVEL", slog.LevelWarn+1); got != want {
 			t.Errorf("%q: got %v, want %v", in, got, want)
 		}
+	}
+}
+
+// The address inside a transport error never reaches the log: not as an error value, not as its text in a string, not in the message.
+func TestTransportErrorAddressIsRemoved(t *testing.T) {
+	var buf bytes.Buffer
+	l := flog.NewWithSecrets(&buf, slog.LevelDebug, nil)
+	_, err := (&http.Client{}).Get("http://127.0.0.1:1/recover?token=SECRETTOKEN123&flow=abc")
+	if err == nil {
+		t.Fatal("expected a dial error")
+	}
+	l.Error("call failed: "+err.Error(), "error", err, "text", err.Error(), "wrapped", fmt.Errorf("sign in: %w", err))
+	out := buf.String()
+	if strings.Contains(out, "SECRETTOKEN123") || strings.Contains(out, "flow=abc") || strings.Contains(out, "127.0.0.1:1/recover") {
+		t.Fatalf("the address reached the log: %s", out)
+	}
+	if !strings.Contains(out, flog.URLRemoved) || !strings.Contains(out, "dial tcp") {
+		t.Errorf("the operation and the cause should remain: %s", out)
+	}
+	// ordinary URLs in a message are left alone
+	buf.Reset()
+	l.Info("listening on http://:8080")
+	if !strings.Contains(buf.String(), "http://:8080") {
+		t.Errorf("an ordinary address was removed: %s", buf.String())
 	}
 }

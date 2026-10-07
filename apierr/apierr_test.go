@@ -96,3 +96,25 @@ func TestFourXXKeepsMessage(t *testing.T) {
 		t.Fatalf("404 changed: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// A validation answer keeps its message and location but never echoes the value that failed (user content must not travel back).
+func TestValidationAnswerDoesNotEchoTheValue(t *testing.T) {
+	apierr.Install()
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("t", "1"))
+	type in struct {
+		Body struct {
+			Title string `json:"title" maxLength:"5"`
+		}
+	}
+	huma.Register(api, huma.Operation{OperationID: "make", Method: "POST", Path: "/make"}, func(context.Context, *in) (*struct{}, error) { return nil, nil })
+	const secret = "a-very-private-note-title"
+	req := httptest.NewRequest("POST", "/make", strings.NewReader(`{"title":"`+secret+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	body := w.Body.String()
+	if w.Code != 422 || strings.Contains(body, secret) || !strings.Contains(body, "body.title") || !strings.Contains(body, "expected length") {
+		t.Fatalf("%d %s", w.Code, body)
+	}
+}
