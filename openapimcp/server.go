@@ -155,5 +155,5 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.serve(w, 
 // Tools returns the sorted tool names, for the parity test.
 func (s *Server) Tools() []string { return s.ts.Names() }
 
-// Toolset returns the derived tools, for callers such as the assistant.
+// Toolset returns the derived tools, for callers that list or call the tools directly.
 func (s *Server) Toolset() *Toolset { return s.ts }

@@ -17,7 +17,7 @@ func TestFromDefaultsToAPIAndWithOverrides(t *testing.T) {
 	if got := surface.From(surface.With(surface.With(ctx, surface.UI), surface.MCP)); got != surface.MCP {
 		t.Fatalf("got %q", got)
 	}
-	if !surface.MCP.IsAI() || !surface.Assistant.IsAI() || !surface.Key.IsAI() || surface.UI.IsAI() || surface.API.IsAI() {
+	if !surface.MCP.IsAI() || !surface.Key.IsAI() || surface.UI.IsAI() || surface.API.IsAI() {
 		t.Fatal("IsAI wrong")
 	}
 }
@@ -54,9 +54,9 @@ func TestMiddlewareClassifiesAndStrips(t *testing.T) {
 func TestMiddlewareKeepsServerSetMarker(t *testing.T) {
 	var seen surface.Surface
 	h := surface.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen = surface.From(r.Context()) }))
-	r := httptest.NewRequest("GET", "/", nil).WithContext(surface.With(context.Background(), surface.Assistant))
+	r := httptest.NewRequest("GET", "/", nil).WithContext(surface.With(context.Background(), surface.MCP))
 	h.ServeHTTP(httptest.NewRecorder(), r)
-	if seen != surface.Assistant {
+	if seen != surface.MCP {
 		t.Fatalf("got %q", seen)
 	}
 }

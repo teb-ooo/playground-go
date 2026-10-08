@@ -59,7 +59,7 @@ type Tool struct {
 	Name string
 	// Description is "Summary\n\nDescription".
 	Description string
-	// Summary is the operation's summary alone (used by the assistant's system prompt).
+	// Summary is the operation's summary alone.
 	Summary string
 	// InputSchema is a JSON Schema object describing the tool input.
 	InputSchema map[string]any

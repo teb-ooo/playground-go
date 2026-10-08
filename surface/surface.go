@@ -1,6 +1,6 @@
 // Package surface records, server-side, which door a request came in through,
 // so an operation can treat a human at the UI differently from an AI acting
-// through MCP or the in-app assistant ("AI authors in draft").
+// through MCP ("AI authors in draft").
 //
 // # Reading it
 //
@@ -16,15 +16,14 @@
 // The values are UI (a browser session), API (any other direct HTTP caller,
 // for example a script with a bearer token), Key (a direct HTTP caller
 // authenticated by a platform API key, set by the auth package and AI like MCP), MCP (a tool call made through
-// openapimcp) and Assistant (a tool call made by an app's own in-app assistant, which sets it itself with With).
+// openapimcp).
 // From never fails: a context nobody marked reads as API.
 //
 // # Why it cannot be forged
 //
 // The marker lives in the request context under an unexported key. A context
 // is built inside the process, so nothing a client sends can set it. The
-// dispatchers in this library (openapimcp.Server for MCP; an app's own assistant, if it has one, for its
-// tools) call With on the context of the in-process request they build, which
+// dispatchers in this library (openapimcp.Server for MCP) calls With on the context of the in-process request they build, which
 // overrides whatever the outer request was classified as. The marker is NOT
 // carried in a header between them, so there is no header to forge.
 //
@@ -39,8 +38,8 @@
 //
 //	handler = surface.Middleware(mux)
 //
-// If an app does not mount Middleware, From still returns MCP and Assistant
-// correctly for those two doors; every other request reads as API.
+// If an app does not mount Middleware, From still returns MCP
+// correctly for that door; every other request reads as API.
 package surface
 
 import (
@@ -53,10 +52,9 @@ type Surface string
 
 // The surfaces.
 const (
-	UI        Surface = "ui"
-	API       Surface = "api"
-	MCP       Surface = "mcp"
-	Assistant Surface = "assistant"
+	UI  Surface = "ui"
+	API Surface = "api"
+	MCP Surface = "mcp"
 	// Key is a direct HTTP call authenticated by a platform API key (pk_...):
 	// an automation or AI caller. Set by the auth package, never by a client.
 	Key Surface = "key"
@@ -69,7 +67,7 @@ const Header = "X-Playground-Surface"
 type ctxKey struct{}
 
 // With returns ctx marked with s. Only server code that dispatches a request
-// on behalf of someone else (the MCP server, the assistant) should call it.
+// on behalf of someone else (the MCP server) should call it.
 func With(ctx context.Context, s Surface) context.Context {
 	return context.WithValue(ctx, ctxKey{}, s)
 }
@@ -83,8 +81,8 @@ func From(ctx context.Context) Surface {
 }
 
 // IsAI reports whether the request was made by an AI on the user's behalf
-// (MCP, Assistant, or a direct call with a platform API key).
-func (s Surface) IsAI() bool { return s == MCP || s == Assistant || s == Key }
+// (MCP, or a direct call with a platform API key).
+func (s Surface) IsAI() bool { return s == MCP || s == Key }
 
 // String implements fmt.Stringer.
 func (s Surface) String() string { return string(s) }
