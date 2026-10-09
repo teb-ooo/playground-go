@@ -137,7 +137,7 @@ func TestValidateOnHandBuiltConfig(t *testing.T) {
 }
 
 func TestLogValueRedactsSecrets(t *testing.T) {
-	c, _ := playground.FromEnv(env(nil))
+	c, _ := playground.FromEnv(env(map[string]string{"APP_OWNER": "Owner@Example.com", "PLAYGROUND_DOMAIN": "teb.example"}))
 	var buf bytes.Buffer
 	slog.New(slog.NewJSONHandler(&buf, nil)).Info("config", "config", c)
 	out := buf.String()
@@ -146,8 +146,16 @@ func TestLogValueRedactsSecrets(t *testing.T) {
 			t.Errorf("log leaks %q: %s", secret, out)
 		}
 	}
+	if !strings.Contains(out, `"app_owner"`) || !strings.Contains(out, `"playground_domain"`) {
+		t.Errorf("log lacks app_owner or playground_domain: %s", out)
+	}
 	if !strings.Contains(out, `"app_name":"hello"`) {
 		t.Errorf("log = %s", out)
+	}
+	for _, want := range []string{`"app_owner":"owner@example.com"`, `"playground_domain":"teb.example"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %s: %s", want, out)
+		}
 	}
 }
 

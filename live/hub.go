@@ -4,7 +4,7 @@
 // An event carries no data, only a resource name (and optionally a project and an id that narrow a detail query):
 // authorisation stays the API's. A Hub fans events out; an Audience decides who may be told; Handler is the stream
 // (a plain http.Handler, never a Huma operation, so the OpenAPI, MCP and parity checks do not see it); Mount
-// registers it on a mux; Relay feeds the hub from an upstream stream such as playd's /v1/work/events.
+// registers it on a mux.
 //
 //	hub := live.NewHub()
 //	live.Mount(mux, hub)

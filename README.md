@@ -10,7 +10,7 @@ What changed in each version, and what an app must do when upgrading, is in [CHA
 go vet ./... && go test ./... -race
 ```
 
-One optional integration check skips itself unless configured: the Postgres store test (`PLAYGROUND_TEST_DATABASE_URL=postgres://postgres:x@127.0.0.1:55432/postgres`; a throwaway database, for example `docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=x postgres:17.11`). No test calls the real Anthropic API or any real mail provider; they use httptest fakes.
+No test calls a real mail provider; they use httptest fakes.
 
 ## Usage
 
@@ -51,12 +51,12 @@ Tests and the agent's browser sign in with `testkit.MintSession(sessionKey, auth
 | Package | What it does |
 |---|---|
 | `playground` (root) | `Config` from the environment with validation; helpers `NewAuth`, `NewMailer`. Secrets never appear in errors or in `LogValue`. |
-| `openapimcp` | One MCP tool per OpenAPI operation, executed in-process with the caller's credentials forwarded. `Handler`, `New`, `Tools()`, `ParityCheck`. |
-| `surface` | Server-side marker of the door a request came through (`ui`, `api`, `mcp`, `assistant`): `surface.From(ctx)` in an operation handler, `surface.Middleware` mounted outermost. Set by the MCP server for its tool calls (an app's own in-app assistant sets `surface.Assistant` for its tool calls); cannot be forged by a client header. |
+| `openapimcp` | One MCP tool per OpenAPI operation, executed in-process with the caller's credentials forwarded. `Handler`, `New`, `Tools()`, `ParityCheck`, which also enforces the API contract of docs/go-api.md on every non-hidden operation: operation ids equal tool names, kebab-case ids, method and path rules, summary, description and tags, security, snake_case properties, `date-time` and id formats, pagination (`items` lists carry `limit`, `cursor`, `next_cursor`), and the `x-mcp: false` and `x-parity-exempt` markers. |
+| `surface` | Server-side marker of the door a request came through (`ui`, `api`, `mcp`): `surface.From(ctx)` in an operation handler, `surface.Middleware` mounted outermost. Set by the MCP server for its tool calls; cannot be forged by a client header. |
 | `auth` | OIDC code flow with PKCE, state and nonce; encrypted session cookie; bearer tokens; `Require`, `RequireAdmin`, `User`. |
 | `keys` | Platform API keys (`pk_` + ES256 JWS issued by playd), verified offline against `https://id.<domain>/.keys/jwks.json` with a revocation list; `NewAuth` installs it, so an app needs no code. Scopes `<app>:read`/`write`/`admin` are enforced by `auth.ScopeMiddleware` and filter MCP tools. See `keys/README.md`. |
 | `ratelimit` | In-memory token bucket for net/http and Huma, keyed by client IP (last `X-Forwarded-For` hop from a trusted proxy) and an optional extra key. |
-| `live` | Rule UI-yvn, the server half: `Hub` (`Publish(resource, audience)` after a write, never blocks, per-subscriber coalescing), audiences (`Everyone`, `Subject`, `Admins`, `Project`), `Mount(mux, hub)` for `GET /api/live` (SSE: `: live`, `change`, `degraded`, `: ping` every 25 s, 1 h lifetime, 8 streams per user, 401/429 problem+json), and `Relay` for an upstream stream such as playd's `/v1/work/events`. Not a Huma operation. |
+| `live` | Rule UI-yvn, the server half: `Hub` (`Publish(resource, audience)` after a write, never blocks, per-subscriber coalescing), audiences (`Everyone`, `Subject`, `Admins`, `Project`), `Mount(mux, hub)` for `GET /api/live` (SSE: `: live`, `change`, `degraded`, `: ping` every 25 s, 1 h lifetime, 8 streams per user, 401/429 problem+json). Not a Huma operation. |
 | `health` | `GET /healthz` returning `{version, env, db, uptime_seconds}`. |
 | `log` | slog JSON to stdout, request middleware, redaction of `*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD` values. |
 | `mail` | Transport only: `Mailer.Send` over Resend or Postmark HTTP, staging redirect to `MAIL_STAGING_SINK` and the `[staging <app>]` subject prefix. No layout and no templates: each app owns its email templates (complete text and HTML documents in its own repo) and passes the rendered `Message` to `Send`. Breaking change in v0.4.0: `Templates`, `Page`, `SendTemplate`, `Config.Templates`, `Config.PlaygroundName` and the `NewMailer` argument are removed. |
@@ -73,7 +73,7 @@ The one error shape is Huma's default RFC 9457 `application/problem+json`: `titl
 
 ### Surface marker
 
-`handler := playgroundlog.Middleware(surface.Middleware(authn.Middleware(mux)))` (surface outside auth). An operation calls `surface.From(ctx)` and gets `surface.UI` (browser, no Authorization header), `surface.API` (anything else direct), `surface.MCP` (a tool call through `openapimcp`) or `surface.Assistant` (a tool call by an app's own in-app assistant, set by that app). The dispatchers set the marker on the context of the in-process request they build; it is never a header, and `surface.Middleware` deletes `X-Playground-Surface` from incoming requests. Use `surface.From(ctx).IsAI()` for "AI authors in draft" rules.
+`handler := playgroundlog.Middleware(surface.Middleware(authn.Middleware(mux)))` (surface outside auth). An operation calls `surface.From(ctx)` and gets `surface.UI` (browser, no Authorization header), `surface.API` (anything else direct) or `surface.MCP` (a tool call through `openapimcp`). The dispatchers set the marker on the context of the in-process request they build; it is never a header, and `surface.Middleware` deletes `X-Playground-Surface` from incoming requests. Use `surface.From(ctx).IsAI()` for "AI authors in draft" rules.
 
 ### openapimcp input schema
 

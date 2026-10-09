@@ -3,6 +3,7 @@ package apierr_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,11 +13,17 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/teb-ooo/playground-go/apierr"
 	playgroundlog "github.com/teb-ooo/playground-go/log"
 )
+
+// pgError has the shape of a driver error (pgconn.PgError) without depending on the driver.
+type pgError struct{ Severity, Code, Message, Detail string }
+
+func (e *pgError) Error() string {
+	return e.Severity + ": " + e.Message + " (SQLSTATE " + e.Code + ")"
+}
 
 func setup(t *testing.T) (http.Handler, *bytes.Buffer) {
 	t.Helper()
@@ -36,10 +43,13 @@ func setup(t *testing.T) (http.Handler, *bytes.Buffer) {
 		return nil, fmt.Errorf("list items: %w", fmt.Errorf(`ERROR: relation "items" does not exist (SQLSTATE 42P01) SELECT * FROM items`))
 	})
 	reg("pg", "/pg", func(context.Context, *struct{}) (*struct{}, error) {
-		return nil, fmt.Errorf("insert: %w", &pgconn.PgError{Severity: "ERROR", Code: "23505", Message: "duplicate key value violates unique constraint items_pkey", Detail: "Key (id)=(secret-value)"})
+		return nil, fmt.Errorf("insert: %w", &pgError{Severity: "ERROR", Code: "23505", Message: "duplicate key value violates unique constraint items_pkey", Detail: "Key (id)=(secret-value)"})
 	})
 	reg("explicit-500", "/e500", func(context.Context, *struct{}) (*struct{}, error) {
 		return nil, huma.Error500InternalServerError("select failed: password authentication failed", fmt.Errorf("dial tcp 10.0.0.5"))
+	})
+	reg("internal", "/internal", func(ctx context.Context, _ *struct{}) (*struct{}, error) {
+		return nil, apierr.Internal(ctx, "load widget", fmt.Errorf("connect 10.0.0.9: password authentication failed"))
 	})
 	reg("client-404", "/e404", func(context.Context, *struct{}) (*struct{}, error) {
 		return nil, huma.Error404NotFound("no such item")
@@ -116,5 +126,39 @@ func TestValidationAnswerDoesNotEchoTheValue(t *testing.T) {
 	body := w.Body.String()
 	if w.Code != 422 || strings.Contains(body, secret) || !strings.Contains(body, "body.title") || !strings.Contains(body, "expected length") {
 		t.Fatalf("%d %s", w.Code, body)
+	}
+}
+
+func TestInternalLogsCauseWithRequestIDAndReturnsFixedBody(t *testing.T) {
+	h, logs := setup(t)
+	rec := get(h, "/internal")
+	body := rec.Body.String()
+	if rec.Code != 500 || strings.Contains(body, "10.0.0.9") || strings.Contains(body, "load widget") || strings.Contains(body, `"errors"`) {
+		t.Fatalf("%d %s", rec.Code, body)
+	}
+	if !strings.Contains(body, `"detail":"internal error"`) || !strings.Contains(body, `"title":"Internal Server Error"`) {
+		t.Errorf("body is not the generic problem: %s", body)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "load widget failed") || !strings.Contains(out, "10.0.0.9") || !strings.Contains(out, "request_id=req-123") {
+		t.Errorf("log lacks the cause or the request id:\n%s", out)
+	}
+	if n := strings.Count(out, "load widget failed"); n != 1 {
+		t.Errorf("want the cause logged once, got %d:\n%s", n, out)
+	}
+}
+
+func TestWriteProblem(t *testing.T) {
+	rec := httptest.NewRecorder()
+	apierr.WriteProblem(rec, http.StatusTeapot, "Teapot", "short and stout")
+	if rec.Code != http.StatusTeapot || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("%d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["title"] != "Teapot" || got["detail"] != "short and stout" || got["status"] != float64(418) || len(got) != 3 {
+		t.Errorf("body = %v", got)
 	}
 }

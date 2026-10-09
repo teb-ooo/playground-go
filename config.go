@@ -249,11 +249,12 @@ func (c Config) LogValue() slog.Value {
 		return "set"
 	}
 	return slog.GroupValue(
-		slog.String("app_name", c.AppName), slog.String("env", c.Env), slog.String("port", c.Port),
+		slog.String("app_name", c.AppName), slog.String("app_owner", c.AppOwner), slog.String("playground_domain", c.PlaygroundDomain), slog.String("env", c.Env), slog.String("port", c.Port),
 		slog.String("public_url", c.PublicURL), slog.String("oidc_issuer", c.OIDC.Issuer),
 		slog.String("oidc_client_id", c.OIDC.ClientID), slog.String("oidc_client_secret", set(c.OIDC.ClientSecret)),
 		slog.String("session_key", set(string(c.SessionKey))), slog.String("database_url", set(c.DatabaseURL)),
 		slog.String("mail_provider", c.Mail.Provider),
+		slog.String("app_owner", c.AppOwner), slog.String("playground_domain", c.PlaygroundDomain),
 		slog.String("version", c.Version),
 	)
 }

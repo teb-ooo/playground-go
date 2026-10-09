@@ -20,18 +20,23 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/teb-ooo/playground-go/internal/problem"
 	playgroundlog "github.com/teb-ooo/playground-go/log"
 )
 
 // Detail is the body detail of every 5xx response.
 const Detail = "internal error"
 
-var once sync.Once
+var (
+	once sync.Once
+	base func(status int, msg string, errs ...error) huma.StatusError // Huma's own constructor, before Install
+)
 
 // Install makes 5xx responses generic. It is idempotent and safe to call from init.
 func Install() {
 	once.Do(func() {
 		prev := huma.NewError
+		base = prev
 		huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
 			if status >= http.StatusInternalServerError {
 				logCause(context.Background(), status, msg, errs)
@@ -81,4 +86,24 @@ func causeKey(i int) string {
 		return "error"
 	}
 	return "error_" + string(rune('0'+i%10))
+}
+
+// WriteProblem answers with an RFC 9457 problem+json body (title, status, detail), for routes outside the Huma
+// API, such as a plain mux handler. It is the same writer auth, live and ratelimit use. Do not put cause text in
+// detail for a 5xx; log it with Internal and answer with Detail instead.
+func WriteProblem(w http.ResponseWriter, status int, title, detail string) {
+	problem.Write(w, status, title, detail)
+}
+
+// Internal logs err (what failed is what, for example "list items") at error level with the request id, through
+// the request-scoped logger, and returns the fixed-body 500 of Install: the client sees only Detail, never the
+// cause. Return it from a Huma operation handler. Install is run first, so it works on its own.
+func Internal(ctx context.Context, what string, err error) error {
+	Install()
+	var errs []error
+	if err != nil {
+		errs = []error{err}
+	}
+	logCause(ctx, http.StatusInternalServerError, what+" failed", errs)
+	return base(http.StatusInternalServerError, Detail)
 }
