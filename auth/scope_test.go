@@ -65,7 +65,6 @@ func TestScopesEnforcedRules(t *testing.T) {
 		{"key without scopes", ctx(auth.CredentialKey, nil), true},
 		{"bearer without app scopes", ctx(auth.CredentialBearer, nil), false},
 		{"bearer with scopes", ctx(auth.CredentialBearer, []string{"notes:read"}), true},
-		{"legacy token without scopes", ctx(auth.CredentialToken, nil), false},
 	}
 	for _, c := range cases {
 		if got := auth.ScopesEnforced(c.ctx); got != c.want {
@@ -89,7 +88,7 @@ func TestScopesEnforcedRules(t *testing.T) {
 
 func TestKeyVerifierRouting(t *testing.T) {
 	e := newEnv(t)
-	var gotKey, gotPat []string
+	var gotKey []string
 	kv := func(_ *http.Request, tok string) (auth.User, bool, error) {
 		gotKey = append(gotKey, tok)
 		switch tok {
@@ -100,13 +99,9 @@ func TestKeyVerifierRouting(t *testing.T) {
 		}
 		return auth.User{}, false, nil
 	}
-	pv := func(_ *http.Request, tok string) (auth.User, bool, error) {
-		gotPat = append(gotPat, tok)
-		return auth.User{Subject: "p"}, tok == "pat_good", nil
-	}
 	a, err := auth.New(auth.OIDCConfig{Issuer: e.idp.srv.URL, ClientID: "app", PublicURL: "https://app.example"}, testKey,
 		auth.WithRateLimit(ratelimit.Options{Burst: 1000, Requests: 1000}),
-		auth.WithAppName("app"), auth.WithKeyVerifier(kv), auth.WithTokenVerifier(pv))
+		auth.WithAppName("app"), auth.WithKeyVerifier(kv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,12 +116,8 @@ func TestKeyVerifierRouting(t *testing.T) {
 	if s.cred != auth.CredentialKey || s.user.Subject != "k" || !s.user.HasScope("app:read") {
 		t.Fatalf("key: %+v", s)
 	}
-	do("pat_good")
-	if s.cred != auth.CredentialToken || s.user.Subject != "p" {
-		t.Fatalf("pat: %+v", s)
-	}
-	if len(gotKey) != 1 || len(gotPat) != 1 {
-		t.Fatalf("routing: key=%v pat=%v", gotKey, gotPat)
+	if len(gotKey) != 1 {
+		t.Fatalf("routing: key=%v", gotKey)
 	}
 	do("pk_bad")
 	if s.ok {
@@ -213,12 +204,14 @@ func TestBearerScopes(t *testing.T) {
 		tok       string
 		get, post int
 	}{
-		{"no scp: unrestricted as today", tokenWith(nil, "scp"), 200, 200},
-		{"openid only: unrestricted", tokenWith([]string{"openid", "email"}, "scp"), 200, 200},
+		{"no scp: refused (no scope for this app)", tokenWith(nil, "scp"), 401, 401},
+		{"openid only: refused", tokenWith([]string{"openid", "email"}, "scp"), 401, 401},
+		{"aud names this app, no scopes: accepted", e.idp.accessTokenFor("user-2", []string{"openid"}, []string{"app"}), 200, 200},
 		{"array with read", tokenWith([]string{"openid", "app:read"}, "scp"), 200, 403},
 		{"string scp with read+write", tokenWith("openid app:read app:write", "scp"), 200, 200},
 		{"scope claim string", tokenWith("app:read", "scope"), 200, 403},
-		{"another app's scopes only", tokenWith([]string{"other:read", "other:write"}, "scp"), 403, 403},
+		{"another app's scopes only: refused", tokenWith([]string{"other:read", "other:write"}, "scp"), 401, 401},
+		{"another app's name as prefix: refused", tokenWith([]string{"app-two:read"}, "scp"), 401, 401},
 	}
 	for _, c := range cases {
 		if got := do("GET", c.tok); got != c.get {
@@ -227,5 +220,81 @@ func TestBearerScopes(t *testing.T) {
 		if got := do("POST", c.tok); got != c.post {
 			t.Errorf("%s POST = %d, want %d", c.name, got, c.post)
 		}
+	}
+}
+
+// B1: a bearer token must be meant for this app, at an operation, through the
+// middleware, and for opaque tokens (whose scopes can only come from userinfo).
+func TestBearerMustBeForThisApp(t *testing.T) {
+	e := newEnv(t)
+	e.idp.opaque = map[string]map[string]any{
+		"opaque-none":  {"sub": "user-2", "email": "bob@teb.ooo"},
+		"opaque-other": {"sub": "user-2", "scope": "other:read"},
+		"opaque-read":  {"sub": "user-2", "email": "bob@teb.ooo", "scope": "openid app:read"},
+		"opaque-aud":   {"sub": "user-2", "aud": "app"},
+	}
+	a, err := auth.New(auth.OIDCConfig{Issuer: e.idp.srv.URL, ClientID: "app", PublicURL: "https://app.example"}, testKey,
+		auth.WithAppName("app"), auth.WithoutRateLimit())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("t", "1"))
+	a.Register(api, mux)
+	huma.Register(api, huma.Operation{OperationID: "op-get", Method: "GET", Path: "/api/s", Summary: "s", Description: "d",
+		Security: []map[string][]string{{"bearer": {}}}},
+		func(ctx context.Context, _ *struct{}) (*struct{ Body string }, error) {
+			return &struct{ Body string }{"ok"}, nil
+		})
+	op := a.BearerOrSession(mux)
+	jwt := func(scp, aud []string) string { return e.idp.accessTokenFor("user-2", scp, aud) }
+	cases := []struct {
+		name string
+		tok  string
+		want int
+	}{
+		{"jwt openid email", jwt([]string{"openid", "email"}, []string{"some-api"}), 401},
+		{"jwt app:read", jwt([]string{"openid", "app:read"}, []string{"some-api"}), 200},
+		{"jwt aud only", jwt([]string{"openid"}, []string{"x", "app"}), 200},
+		{"opaque no scopes", "opaque-none", 401},
+		{"opaque other app", "opaque-other", 401},
+		{"opaque app:read", "opaque-read", 200},
+		{"opaque aud", "opaque-aud", 200},
+	}
+	for _, c := range cases {
+		// An operation.
+		r := httptest.NewRequest("GET", "/api/s", nil)
+		r.Header.Set("Authorization", "Bearer "+c.tok)
+		w := httptest.NewRecorder()
+		op.ServeHTTP(w, r)
+		if w.Code != c.want {
+			t.Errorf("%s operation = %d, want %d", c.name, w.Code, c.want)
+		}
+		if c.want == 401 && w.Header().Get("WWW-Authenticate") == "" {
+			t.Errorf("%s: no WWW-Authenticate", c.name)
+		}
+		// The middleware never rejects but must not identify the caller.
+		var ok bool
+		r = httptest.NewRequest("GET", "/x", nil)
+		r.Header.Set("Authorization", "Bearer "+c.tok)
+		a.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			_, ok = auth.FromContext(r.Context())
+		})).ServeHTTP(httptest.NewRecorder(), r)
+		if ok != (c.want == 200) {
+			t.Errorf("%s middleware identified = %v", c.name, ok)
+		}
+	}
+	// Without an app name nothing can be checked: as before, a token with
+	// only openid is accepted.
+	plain, err := auth.New(auth.OIDCConfig{Issuer: e.idp.srv.URL, ClientID: "app", PublicURL: "https://app.example"}, testKey, auth.WithoutRateLimit())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", "/x", nil)
+	r.Header.Set("Authorization", "Bearer "+jwt([]string{"openid"}, nil))
+	w := httptest.NewRecorder()
+	plain.BearerOrSession(http.NotFoundHandler()).ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("no app name: %d", w.Code)
 	}
 }

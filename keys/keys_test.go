@@ -305,7 +305,7 @@ func TestWrongKeyAndTamper(t *testing.T) {
 	parts[1] = base64.RawURLEncoding.EncodeToString(pb)
 	e.want401(t, strings.Join(parts, "."))
 
-	for _, bad := range []string{"", "pk_", "pk_x", "pk_a.b.c", "pat_" + tok[3:], tok[3:], tok + "x", "pk_" + strings.Repeat("a", 5000)} {
+	for _, bad := range []string{"", "pk_", "pk_x", "pk_a.b.c", "px_" + tok[3:], tok[3:], tok + "x", "pk_" + strings.Repeat("a", 5000)} {
 		e.want401(t, bad)
 	}
 }

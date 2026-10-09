@@ -201,18 +201,28 @@ func (c Config) SPA() spa.Config {
 //
 // Platform API keys (pk_ bearer tokens) are accepted without any app code
 // when PLAYGROUND_DOMAIN is set: the keys verifier is installed, with the app
-// name for audience and scopes. Options passed by the caller come last and
+// name for audience and scopes. Call Close on the result to stop the
+// verifier's background revocation poll. Options passed by the caller come last and
 // win, so WithKeyVerifier replaces it.
 func (c Config) NewAuth(opts ...auth.Option) (*auth.Auth, error) {
 	base := []auth.Option{auth.WithOwner(c.AppOwner), auth.WithAppName(c.AppName)}
+	var kv *keys.Verifier
 	if c.PlaygroundDomain != "" && c.AppName != "" {
-		kv, err := keys.New(keys.Options{App: c.AppName, Domain: c.PlaygroundDomain})
+		var err error
+		kv, err = keys.New(keys.Options{App: c.AppName, Domain: c.PlaygroundDomain})
 		if err != nil {
 			return nil, err
 		}
-		base = append(base, auth.WithKeyVerifier(kv.Verify))
+		base = append(base, auth.WithKeyVerifier(kv.Verify), auth.OnClose(kv.Close))
 	}
-	return auth.New(c.OIDC, c.SessionKey, append(base, opts...)...)
+	a, err := auth.New(c.OIDC, c.SessionKey, append(base, opts...)...)
+	if err != nil {
+		if kv != nil {
+			kv.Close()
+		}
+		return nil, err
+	}
+	return a, nil
 }
 
 // MCPOptions returns openapimcp options with the platform's wiring: the

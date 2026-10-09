@@ -70,6 +70,11 @@ var errBearer = errors.New("auth: invalid bearer token")
 // email, username and groups in the ID token only, the user's claims are then
 // filled in from the userinfo endpoint with the same token. Opaque tokens are
 // validated by userinfo alone.
+//
+// When the app name is known (WithAppName) a token is accepted only if it
+// carries at least one scope for this app ("<app>:read|write|admin") or names
+// this app in aud (see forThisApp); anything else is errBearer (401). The
+// scopes and aud of an opaque token can only come from its userinfo claims.
 func (a *Auth) verifyBearer(ctx context.Context, tok string) (User, error) {
 	if tok == "" {
 		return User{}, errBearer
@@ -101,6 +106,9 @@ func (a *Auth) verifyBearer(ctx context.Context, tok string) (User, error) {
 			return User{}, errBearer
 		}
 		scopes := scopesFromClaims(idt.Claims)
+		if !a.forThisApp(scopes, idt.Audience) {
+			return User{}, errBearer
+		}
 		if info, err := p.UserInfo(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: tok, TokenType: "Bearer"})); err == nil && info.Subject == user.Subject {
 			if enriched, err := userFromClaims(info.Subject, info.Claims); err == nil {
 				user = enriched
@@ -121,16 +129,60 @@ func (a *Auth) verifyBearer(ctx context.Context, tok string) (User, error) {
 		if err != nil {
 			return User{}, errBearer
 		}
+		user.Scopes = scopesFromClaims(info.Claims)
+		if !a.forThisApp(user.Scopes, audFromClaims(info.Claims)) {
+			return User{}, errBearer
+		}
 	}
 	a.bearer.put(tok, user, exp)
 	return user, nil
 }
 
+// forThisApp reports whether a bearer token with these app scopes and audience
+// is meant for this app: it holds a scope of the form "<app>:..." or lists the
+// app name in aud. An Auth without an app name (WithAppName not used) cannot
+// tell and accepts every verified token, as before.
+func (a *Auth) forThisApp(scopes, aud []string) bool {
+	if a.appName == "" {
+		return true
+	}
+	for _, s := range scopes {
+		if strings.HasPrefix(s, a.appName+":") {
+			return true
+		}
+	}
+	for _, x := range aud {
+		if x == a.appName {
+			return true
+		}
+	}
+	return false
+}
+
+// audFromClaims reads aud (a string or an array) from userinfo claims.
+func audFromClaims(claims claimsFunc) []string {
+	var c struct {
+		Aud json.RawMessage `json:"aud"`
+	}
+	if claims(&c) != nil {
+		return nil
+	}
+	var many []string
+	if json.Unmarshal(c.Aud, &many) == nil {
+		return many
+	}
+	var one string
+	if json.Unmarshal(c.Aud, &one) == nil && one != "" {
+		return []string{one}
+	}
+	return nil
+}
+
 // scopesFromClaims reads the granted scopes of a JWT access token. Hydra puts
 // them in "scp" (an array; some issuers use a space separated string, or the
 // RFC 9068 "scope" string). Only app scopes ("<app>:read|write|admin") are
-// kept; nil means the token carries none and is unrestricted (see
-// ScopesEnforced).
+// kept; nil means the token carries none (such a token is refused by
+// verifyBearer unless it names this app in aud).
 func scopesFromClaims(claims claimsFunc) []string {
 	var c struct {
 		Scp   json.RawMessage `json:"scp"`

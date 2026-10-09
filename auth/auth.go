@@ -47,13 +47,19 @@ type Auth struct {
 	client *http.Client
 	now    func() time.Time
 
-	mu       sync.Mutex
+	mu       sync.Mutex // guards provider, disc, failErr, failedAt; never held across the network
 	provider *oidc.Provider
+	disc     *discovery // the discovery in flight, if any
+	failErr  error      // the last discovery failure, served until failedAt+retryAfter
+	failedAt time.Time
 	bearer   *bearerCache
 
-	tokenVerifier TokenVerifier
-	keyVerifier   TokenVerifier
-	appName       string
+	discoveryTimeout time.Duration
+	retryAfter       time.Duration
+
+	keyVerifier TokenVerifier
+	closers     []func()
+	appName     string
 
 	owner      string
 	rl         ratelimit.Options
@@ -75,30 +81,19 @@ func WithOwner(email string) Option {
 	return func(a *Auth) { a.owner = strings.ToLower(strings.TrimSpace(email)) }
 }
 
-// PATPrefix starts every personal access token. A bearer token with this
-// prefix goes to the TokenVerifier (never to the OIDC path); without a
-// verifier it is treated as any other bearer token and fails.
-const PATPrefix = "pat_"
-
-// TokenVerifier checks a personal access token (the whole bearer value, with
-// its PATPrefix) presented on request r and returns the user it belongs to.
+// TokenVerifier checks a platform API key (the whole bearer value, with its
+// KeyPrefix) presented on request r and returns the user it belongs to.
 // ok=false with a nil error means unknown, revoked or expired (401); a
 // *RateLimitedError means the client is making too many failed attempts (429);
 // any other error is a backend failure (503, logged, not shown). The error
 // must never contain the token. r is passed so the verifier can rate limit by
-// client IP. Platform API keys (package keys) cover the common case.
+// client IP. Package keys provides the verifier.
 type TokenVerifier func(r *http.Request, token string) (u User, ok bool, err error)
 
 // RateLimitedError is returned by a TokenVerifier that refused a client.
 type RateLimitedError struct{ RetryAfter time.Duration }
 
 func (e *RateLimitedError) Error() string { return "auth: too many failed token attempts" }
-
-// WithTokenVerifier lets Middleware and BearerOrSession accept personal access
-// tokens: a bearer token starting with PATPrefix is checked by v before, and
-// instead of, the OIDC path. Users it returns are recorded with
-// CredentialToken. Without this option nothing changes.
-func WithTokenVerifier(v TokenVerifier) Option { return func(a *Auth) { a.tokenVerifier = v } }
 
 // Problem codes are the closed list the entrance page receives as `?problem=<code>` (see WithEntrance).
 const (
@@ -125,6 +120,24 @@ func WithRateLimit(o ratelimit.Options) Option { return func(a *Auth) { a.rl = o
 // WithoutRateLimit disables rate limiting on the auth routes.
 func WithoutRateLimit() Option { return func(a *Auth) { a.noRL = true } }
 
+// OnClose registers fn to run once when Close is called, for example to stop
+// the keys.Verifier whose Verify method was passed to WithKeyVerifier.
+// Config.NewAuth does this for the verifier it creates.
+func OnClose(fn func()) Option { return func(a *Auth) { a.closers = append(a.closers, fn) } }
+
+// Close releases what the Auth started or was given with OnClose (the key
+// revocation poller). It is safe to call more than once. Requests still in
+// flight are not affected.
+func (a *Auth) Close() {
+	a.mu.Lock()
+	fns := a.closers
+	a.closers = nil
+	a.mu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+}
+
 // WithClock replaces time.Now, for tests.
 func WithClock(now func() time.Time) Option { return func(a *Auth) { a.now = now } }
 
@@ -150,7 +163,8 @@ func New(cfg OIDCConfig, sessionKey []byte, opts ...Option) (*Auth, error) {
 		cfg.Scopes = []string{oidc.ScopeOpenID, "email", "profile", "groups"}
 	}
 	a := &Auth{cfg: cfg, key: append([]byte(nil), sessionKey...), ttl: DefaultSessionTTL,
-		client: &http.Client{Timeout: 10 * time.Second}, now: time.Now}
+		client: &http.Client{Timeout: 10 * time.Second}, now: time.Now,
+		discoveryTimeout: 15 * time.Second, retryAfter: 5 * time.Second}
 	for _, o := range opts {
 		o(a)
 	}
@@ -172,20 +186,61 @@ func (a *Auth) clientCtx(ctx context.Context) context.Context {
 	return oidc.ClientContext(ctx, a.client)
 }
 
+// discovery is one attempt to fetch the issuer's configuration; waiters block
+// on done.
+type discovery struct {
+	done chan struct{}
+	p    *oidc.Provider
+	err  error
+}
+
+// getProvider returns the OIDC provider, discovering it on first use. At most
+// one discovery runs at a time (on its own context, bounded by
+// discoveryTimeout); every caller waits for it with its own request context.
+// A failure is remembered for retryAfter, so while the issuer is down callers
+// fail at once instead of each paying a discovery timeout.
 func (a *Auth) getProvider(ctx context.Context) (*oidc.Provider, error) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if a.provider != nil {
-		return a.provider, nil
+		p := a.provider
+		a.mu.Unlock()
+		return p, nil
 	}
-	dctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if a.failErr != nil && time.Since(a.failedAt) < a.retryAfter {
+		err := a.failErr
+		a.mu.Unlock()
+		return nil, err
+	}
+	d := a.disc
+	if d == nil {
+		d = &discovery{done: make(chan struct{})}
+		a.disc = d
+		go a.discover(d)
+	}
+	a.mu.Unlock()
+	select {
+	case <-d.done:
+		return d.p, d.err
+	case <-ctx.Done():
+		return nil, fmt.Errorf("auth: OIDC discovery for %s: %w", a.cfg.Issuer, ctx.Err())
+	}
+}
+
+func (a *Auth) discover(d *discovery) {
+	dctx, cancel := context.WithTimeout(context.Background(), a.discoveryTimeout)
 	defer cancel()
 	p, err := oidc.NewProvider(a.clientCtx(dctx), a.cfg.Issuer)
+	a.mu.Lock()
 	if err != nil {
-		return nil, fmt.Errorf("auth: OIDC discovery for %s: %w", a.cfg.Issuer, err)
+		d.err = fmt.Errorf("auth: OIDC discovery for %s: %w", a.cfg.Issuer, err)
+		a.failErr, a.failedAt = d.err, time.Now()
+	} else {
+		d.p = p
+		a.provider, a.failErr = p, nil
 	}
-	a.provider = p
-	return p, nil
+	a.disc = nil
+	a.mu.Unlock()
+	close(d.done)
 }
 
 func (a *Auth) oauthConfig(p *oidc.Provider) *oauth2.Config {

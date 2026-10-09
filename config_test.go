@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	playground "github.com/teb-ooo/playground-go"
 )
@@ -183,5 +185,33 @@ func TestMCPOptions(t *testing.T) {
 	o := c.MCPOptions(a)
 	if o.PublicURL != "https://hello-staging.teb.ooo" || o.App != "hello" || o.AuthorizationServer != "https://oidc.teb.ooo" || o.Auth == nil || !o.RequireAuth {
 		t.Fatalf("%+v", o)
+	}
+}
+
+// B14: Close stops the keys verifier's revocation poller that NewAuth started.
+func TestNewAuthCloseStopsKeyPoller(t *testing.T) {
+	c, err := playground.FromEnv(env(map[string]string{"PLAYGROUND_DOMAIN": "keys.invalid"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := runtime.NumGoroutine()
+	a, err := c.NewAuth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The poller starts with the first key verification.
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Bearer pk_eyJhbGciOiJFUzI1NiIsImtpZCI6IngifQ.e30.AAAA")
+	a.BearerOrSession(http.NotFoundHandler()).ServeHTTP(httptest.NewRecorder(), r)
+	if runtime.NumGoroutine() <= before {
+		t.Skip("poller goroutine not observed")
+	}
+	a.Close()
+	deadline := time.Now().Add(3 * time.Second)
+	for runtime.NumGoroutine() > before && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if n := runtime.NumGoroutine(); n > before {
+		t.Fatalf("goroutines: %d before NewAuth, %d after Close", before, n)
 	}
 }

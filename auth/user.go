@@ -51,8 +51,6 @@ const (
 	CredentialSession Credential = "session"
 	// CredentialBearer is an OIDC access token validated against the issuer.
 	CredentialBearer Credential = "bearer"
-	// CredentialToken is a personal access token (see WithTokenVerifier).
-	CredentialToken Credential = "token"
 	// CredentialKey is a platform API key (pk_..., see package keys). Its
 	// scopes are always enforced.
 	CredentialKey Credential = "key"
@@ -85,9 +83,9 @@ func AgentFromContext(ctx context.Context) string {
 
 // RequireSession returns the user only when they signed in through the
 // browser (session cookie): 401 if nobody is identified, 403 if the caller
-// came with a bearer token or a personal access token. Operations that manage
-// credentials (minting, listing and revoking personal access tokens) use it,
-// so a leaked token can never create another one. It fails closed: a context
+// came with a bearer token or a platform API key. Operations that manage
+// credentials (minting, listing and revoking keys) use it, so a leaked token
+// can never create another one. It fails closed: a context
 // whose credential was not recorded by this package's middleware is refused.
 func RequireSession(ctx context.Context) (User, error) {
 	u, err := Require(ctx)
