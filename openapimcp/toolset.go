@@ -21,8 +21,8 @@ import (
 var toolNameRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
 
 // forwardedHeaders are copied from the caller onto the in-process request so
-// the operation runs as the same user.
-var forwardedHeaders = []string{"Authorization", "Cookie", "X-Request-Id", "Accept-Language"}
+// the operation runs as the same user and per-IP limits see the same client (X-Forwarded-For only counts when the outer RemoteAddr is a trusted proxy, which the inner request shares).
+var forwardedHeaders = []string{"Authorization", "Cookie", "X-Request-Id", "Accept-Language", "X-Forwarded-For"}
 
 type paramSpec struct {
 	name     string
@@ -434,7 +434,12 @@ func (t *Tool) Call(ctx context.Context, app http.Handler, hdr http.Header, args
 		return Result{}, fmt.Errorf("openapimcp: tool %s: building request: %w", t.Name, err)
 	}
 	req.Host = "localhost"
+	// The inner request keeps the outer client's address and X-Forwarded-For (the latter is in forwardedHeaders), so ratelimit.ClientIP
+	// computes the same client for both; a call that did not come through Server has no outer address and reads as loopback.
 	req.RemoteAddr = "127.0.0.1:0"
+	if c, ok := clientFrom(ctx); ok && c.remoteAddr != "" {
+		req.RemoteAddr = c.remoteAddr
+	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

@@ -187,3 +187,40 @@ func TestContractExemptions(t *testing.T) {
 	op.Extensions = map[string]any{openapimcp.ExemptExtension: true}
 	expect(t, runContract[goodOut](op), "needs a non-empty string reason")
 }
+
+func TestContractXScopeValues(t *testing.T) {
+	op := goodOp()
+	for _, ok := range []string{"read", "write", "admin"} {
+		op.Extensions = map[string]any{"x-scope": ok}
+		expect(t, runContract[goodOut](op))
+	}
+	for _, bad := range []any{"admn", "", "app:read", true} {
+		op.Extensions = map[string]any{"x-scope": bad}
+		expect(t, runContract[goodOut](op), `operation "get-widgets"`, "x-scope", `set it to "read", "write" or "admin"`)
+	}
+	// An exempted operation is checked too: the exemption is for the contract shape, not for a typo that locks every key out.
+	op.Extensions = map[string]any{"x-scope": "admn", openapimcp.ExemptExtension: "reason"}
+	expect(t, runContract[goodOut](op), "x-scope")
+}
+
+func TestContractUnknownExemptionID(t *testing.T) {
+	expect(t, runContract[goodOut](goodOp(), openapimcp.WithExempt("get-widgets")))
+	expect(t, runContract[goodOut](goodOp(), openapimcp.WithExempt("get-widgetz")), `WithExempt`, `"get-widgetz"`, "matches no operation", "remove it or correct the id")
+	// An operation that is not a tool still exists.
+	op := goodOp()
+	op.Extensions = map[string]any{openapimcp.NoToolExtension: false}
+	expect(t, runContract[goodOut](op, openapimcp.WithExempt("get-widgets")))
+}
+
+func TestContractExtensionTypes(t *testing.T) {
+	for _, name := range []string{openapimcp.RequireUserInteractionExtension, openapimcp.NoToolExtension} {
+		op := goodOp()
+		op.Extensions = map[string]any{name: "true"}
+		expect(t, runContract[goodOut](op), `operation "get-widgets"`, name, "not a bool", "set it to a bool")
+		op.Extensions = map[string]any{name: true}
+		expect(t, runContract[goodOut](op))
+	}
+	op := goodOp()
+	op.Extensions = map[string]any{openapimcp.ExemptExtension: 3}
+	expect(t, runContract[goodOut](op), openapimcp.ExemptExtension, "non-empty string reason")
+}

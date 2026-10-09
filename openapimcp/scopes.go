@@ -149,6 +149,8 @@ func (w *challengeWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter
 // hands over to the MCP transport. The identity is in the context the tool
 // calls and the list filter see.
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
+	// The tool calls run in-process; they need the outer client address so per-IP limits see the real client, not loopback.
+	r = r.WithContext(withClient(r.Context(), client{remoteAddr: r.RemoteAddr}))
 	if s.opts.metadataURL() != "" {
 		w = &challengeWriter{ResponseWriter: w, value: s.challenge(r.Header.Get("Authorization") != "")}
 	}
@@ -164,9 +166,25 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handler.ServeHTTP(w, r)
 	})
-	if s.opts.Auth != nil {
+	// An outer middleware (the template mounts auth.Middleware around the whole mux) may have identified the caller already: then
+	// the credential is not verified a second time at the door.
+	if s.opts.Auth != nil && auth.CredentialFromContext(r.Context()) == "" {
 		s.opts.Auth(inner).ServeHTTP(w, r)
 		return
 	}
 	inner.ServeHTTP(w, r)
+}
+
+// client is the outer request's network identity, carried to the in-process dispatch.
+type client struct{ remoteAddr string }
+
+type clientKey struct{}
+
+func withClient(ctx context.Context, c client) context.Context {
+	return context.WithValue(ctx, clientKey{}, c)
+}
+
+func clientFrom(ctx context.Context) (client, bool) {
+	c, ok := ctx.Value(clientKey{}).(client)
+	return c, ok
 }

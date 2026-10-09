@@ -3,6 +3,7 @@ package openapimcp
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -83,6 +84,7 @@ func ParityCheck(t testing.TB, api huma.API, mcpHandler http.Handler, opts ...Pa
 	}
 
 	var ids []string
+	known := map[string]bool{}
 	for path, item := range api.OpenAPI().Paths {
 		for method, op := range map[string]*huma.Operation{
 			"GET": item.Get, "PUT": item.Put, "POST": item.Post, "DELETE": item.Delete,
@@ -91,6 +93,7 @@ func ParityCheck(t testing.TB, api huma.API, mcpHandler http.Handler, opts ...Pa
 			if op == nil {
 				continue
 			}
+			known[op.OperationID] = true
 			if !IsNotATool(op) {
 				ids = append(ids, op.OperationID)
 			}
@@ -98,6 +101,11 @@ func ParityCheck(t testing.TB, api huma.API, mcpHandler http.Handler, opts ...Pa
 		}
 	}
 	slices.Sort(ids)
+	for _, id := range slices.Sorted(maps.Keys(cfg.exempt)) {
+		if !known[id] {
+			t.Errorf("WithExempt: operation id %q matches no operation; fix: remove it or correct the id (an exemption for an operation that is gone or was renamed protects nothing); %s", id, docPointer)
+		}
+	}
 
 	ts := httptest.NewServer(mcpHandler)
 	defer ts.Close()
@@ -142,6 +150,7 @@ func checkContract(t testing.TB, api huma.API, cfg *parityConfig, method, path s
 	fail := func(problem, fix string) {
 		t.Errorf("%s: %s; fix: %s; %s", label, problem, fix, docPointer)
 	}
+	checkExtensions(op, fail)
 	if v, ok := op.Extensions[ExemptExtension]; ok {
 		if r, _ := v.(string); strings.TrimSpace(r) == "" {
 			fail("extension "+ExemptExtension+" needs a non-empty string reason", `set it to the reason, for example "WebAuthn ceremony: shapes fixed by the spec"`)
@@ -367,4 +376,25 @@ func toSnake(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// scopeNames are the values x-scope may take.
+var scopeNames = []string{"read", "write", "admin"}
+
+// checkExtensions checks the values of the extensions the library reads: a typo or a wrong type would otherwise be ignored or fail
+// closed without a message. It runs for exempted operations too.
+func checkExtensions(op *huma.Operation, fail func(problem, fix string)) {
+	if v, ok := op.Extensions["x-scope"]; ok {
+		if s, isStr := v.(string); !isStr || !slices.Contains(scopeNames, s) {
+			fail(fmt.Sprintf("extension x-scope is %#v, not read, write or admin (a typo makes the operation unreachable for every platform key)", v),
+				`set it to "read", "write" or "admin", or remove it to get read for GET and HEAD and write for the rest`)
+		}
+	}
+	for _, name := range []string{RequireUserInteractionExtension, NoToolExtension} {
+		if v, ok := op.Extensions[name]; ok {
+			if _, isBool := v.(bool); !isBool {
+				fail(fmt.Sprintf("extension %s is %#v, not a bool (it is ignored)", name, v), "set it to a bool, true or false, not a string")
+			}
+		}
+	}
 }

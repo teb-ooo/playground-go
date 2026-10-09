@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/teb-ooo/playground-go/internal/uuidv7"
@@ -19,12 +20,63 @@ func RequestID(ctx context.Context) string {
 	return s
 }
 
+type callKey struct{}
+
+// Fields describe who did what in a request; Annotate fills them in. All values are identifiers (a user subject, an operation id, a
+// credential kind, a surface name), never user content or a token.
+type Fields struct {
+	// User is the subject of the signed-in user.
+	User string
+	// Credential is how the user proved who they are: session, bearer, token or key.
+	Credential string
+	// Surface is the client surface (ui, api, mcp, key).
+	Surface string
+	// Op is the operation id.
+	Op string
+}
+
+// holder is the mutable slot Middleware puts in the context. The middleware runs outermost, so code further in (the auth middleware, an
+// operation) cannot hand it a new context; it fills this slot instead.
+type holder struct {
+	mu sync.Mutex
+	f  Fields
+}
+
+// Annotate records f on the request line of the Middleware that wraps ctx; non-empty fields overwrite earlier values. It does
+// nothing when ctx has no Middleware, so libraries can call it unconditionally.
+func Annotate(ctx context.Context, f Fields) {
+	h, _ := ctx.Value(callKey{}).(*holder)
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if f.User != "" {
+		h.f.User = f.User
+	}
+	if f.Credential != "" {
+		h.f.Credential = f.Credential
+	}
+	if f.Surface != "" {
+		h.f.Surface = f.Surface
+	}
+	if f.Op != "" {
+		h.f.Op = f.Op
+	}
+}
+
+func (h *holder) get() Fields {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.f
+}
+
 // Middleware logs every request with the default slog logger. See
 // MiddlewareWith.
 func Middleware(next http.Handler) http.Handler { return MiddlewareWith(nil, next) }
 
 // MiddlewareWith logs one line per request with request_id, method, path,
-// status and duration_ms (error for a 5xx, warn for a 4xx, debug for a successful request to /healthz, /mcp, /api/live or /auth/me, info otherwise). The request id is taken from an incoming
+// status and duration_ms, plus user, credential, surface and op when something further in called Annotate (error for a 5xx, warn for a 4xx, debug for a successful request to /healthz, /mcp, /api/live or /auth/me, info otherwise). The request id is taken from an incoming
 // X-Request-Id header when it is a sane token, otherwise a UUIDv7 is
 // generated; it is echoed in the response header and available through
 // RequestID and as a logger attribute via Logger. A nil logger means slog.Default() at request time.
@@ -40,20 +92,29 @@ func MiddlewareWith(l *slog.Logger, next http.Handler) http.Handler {
 			id = uuidv7.New()
 		}
 		w.Header().Set("X-Request-Id", id)
-		ctx := context.WithValue(r.Context(), ridKey{}, id)
+		h := &holder{}
+		ctx := context.WithValue(context.WithValue(r.Context(), ridKey{}, id), callKey{}, h)
 		rw := &statusWriter{ResponseWriter: w}
 		defer func() {
 			status := rw.status
 			if status == 0 {
 				status = http.StatusOK
 			}
-			logger.LogAttrs(ctx, requestLevel(r.URL.Path, status), "request",
+			attrs := []slog.Attr{
 				slog.String("request_id", id),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", status),
 				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
-			)
+			}
+			f := h.get()
+			for _, a := range [...]slog.Attr{slog.String("user", f.User), slog.String("credential", f.Credential),
+				slog.String("surface", f.Surface), slog.String("op", f.Op)} {
+				if a.Value.String() != "" {
+					attrs = append(attrs, a)
+				}
+			}
+			logger.LogAttrs(ctx, requestLevel(r.URL.Path, status), "request", attrs...)
 		}()
 		next.ServeHTTP(rw, r.WithContext(ctx))
 	})

@@ -3,11 +3,15 @@ package openapimcp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/teb-ooo/playground-go/auth"
+	playgroundlog "github.com/teb-ooo/playground-go/log"
 	"github.com/teb-ooo/playground-go/surface"
 )
 
@@ -92,7 +96,17 @@ func New(api huma.API, app http.Handler, opts Options) (*Server, error) {
 
 	dispatch := app
 	if opts.Auth != nil {
-		dispatch = opts.Auth(app)
+		authed := opts.Auth(app)
+		// The tool call's context is the outer request's: when Auth already identified the caller there, the inner request inherits
+		// that identity (user and credential travel in the context, nothing the inner request carries can change them) and the
+		// credential is verified once, not once more per tool call. Anonymous callers still pass through Auth.
+		dispatch = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := auth.FromContext(r.Context()); ok && auth.CredentialFromContext(r.Context()) != "" {
+				app.ServeHTTP(w, r)
+				return
+			}
+			authed.ServeHTTP(w, r)
+		})
 	}
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: name, Version: version}, &mcp.ServerOptions{Instructions: opts.Instructions})
@@ -113,16 +127,20 @@ func New(api huma.API, app http.Handler, opts Options) (*Server, error) {
 				}
 				// Server-side marker: the dispatched request's context says "mcp",
 				// whatever the client sent (see package surface).
+				start := time.Now()
 				if !ToolAllowed(ctx, t) {
+					logToolCall(ctx, t.Name, http.StatusForbidden, start)
 					return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: scopeError(ctx, t)}}}, nil
 				}
 				res, err := t.Call(surface.With(ctx, surface.MCP), dispatch, hdr, req.Params.Arguments)
 				if err != nil {
+					logToolCall(ctx, t.Name, http.StatusBadRequest, start)
 					return &mcp.CallToolResult{
 						IsError: true,
 						Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
 					}, nil
 				}
+				logToolCall(ctx, t.Name, res.Status, start)
 				return &mcp.CallToolResult{
 					IsError: res.IsError,
 					Content: []mcp.Content{&mcp.TextContent{Text: res.Text()}},
@@ -157,3 +175,34 @@ func (s *Server) Tools() []string { return s.ts.Names() }
 
 // Toolset returns the derived tools, for callers that list or call the tools directly.
 func (s *Server) Toolset() *Toolset { return s.ts }
+
+// logToolCall writes the one line a tool call leaves in the app's log: info for a success, warn for a 4xx, error for a 5xx, with
+// op, status, duration_ms, the user's subject, the credential kind, surface=mcp and the outer request id. It never logs arguments or
+// results (user content) or tokens.
+func logToolCall(ctx context.Context, op string, status int, start time.Time) {
+	level := slog.LevelInfo
+	switch {
+	case status >= 500:
+		level = slog.LevelError
+	case status >= 400:
+		level = slog.LevelWarn
+	}
+	u, _ := auth.FromContext(ctx)
+	attrs := []slog.Attr{
+		slog.String("op", op),
+		slog.Int("status", status),
+		slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+		slog.String("surface", surface.MCP.String()),
+	}
+	if u.Subject != "" {
+		attrs = append(attrs, slog.String("user", u.Subject))
+	}
+	if c := auth.CredentialFromContext(ctx); c != "" {
+		attrs = append(attrs, slog.String("credential", string(c)))
+	}
+	if id := playgroundlog.RequestID(ctx); id != "" {
+		attrs = append(attrs, slog.String("request_id", id))
+	}
+	playgroundlog.Annotate(ctx, playgroundlog.Fields{Op: op})
+	slog.Default().LogAttrs(ctx, level, "mcp tool call", attrs...)
+}
