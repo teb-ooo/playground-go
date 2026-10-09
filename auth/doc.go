@@ -17,13 +17,15 @@
 // Every cookie this package sets is Secure, HttpOnly, SameSite=Lax and
 // host-only (no Domain attribute).
 //
-// Personal access tokens: WithTokenVerifier plugs in an app's own verifier
-// (platform API keys and MCP sign-in replace the old apitoken package, removed in v0.9.0) for bearer tokens that start with PATPrefix ("pat_"). They are
-// checked there instead of by the OIDC path, so a long-lived revocable token
-// can serve external MCP clients. Middleware and BearerOrSession record how
-// the caller proved who they are (CredentialFromContext: session, bearer or
-// token); RequireSession admits only a browser session, for operations that
-// manage credentials.
+// Middleware and BearerOrSession record how the caller proved who they are
+// (CredentialFromContext: session, bearer or key); RequireSession admits only
+// a browser session, for operations that manage credentials.
+//
+// A bearer access token is accepted by an app only when it carries at least
+// one scope for this app ("<app>:read|write|admin") or names the app in aud;
+// otherwise it is a 401 invalid_token. A token with only openid/email/profile
+// is therefore refused. (An Auth without WithAppName cannot tell and accepts
+// every verified token.)
 //
 // Platform API keys: WithKeyVerifier plugs in the keys package's verifier for
 // bearer tokens that start with KeyPrefix ("pk_"); playground.Config.NewAuth
@@ -36,10 +38,10 @@
 //	key (pk_...)              always restricted to its scopes; no scopes, no access;
 //	                          admin does not bypass (admin operations need the
 //	                          admin group claim AND the <app>:admin scope)
-//	bearer (OIDC/Hydra JWT)   restricted only when its scp (array or string) or
-//	                          scope claim holds app scopes; openid/email/profile
-//	                          only, or no claim, stays unrestricted
-//	token (pat_, legacy)      restricted only if the verifier returned Scopes
+//	bearer (OIDC/Hydra JWT)   restricted by the app scopes in its scp (array or
+//	                          string) or scope claim; a token with none is
+//	                          accepted only if aud names this app, and is then
+//	                          unrestricted
 //
 // ScopesEnforced says which applies; ScopeMiddleware (installed by Register,
 // before the operations are registered) checks each operation that has a

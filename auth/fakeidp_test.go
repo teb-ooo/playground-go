@@ -28,6 +28,8 @@ type fakeIDP struct {
 	// userinfoCalls counts userinfo requests.
 	userinfoCalls int
 	failUserinfo  bool
+	// opaque maps an opaque access token to its userinfo claims (with "sub").
+	opaque map[string]map[string]any
 }
 
 type codeInfo struct {
@@ -98,6 +100,12 @@ func (f *fakeIDP) accessToken(sub string, exp time.Time) string {
 		"iat": time.Now().Unix(), "exp": exp.Unix(), "scp": []string{"openid"}})
 }
 
+// accessTokenFor mints a JWT access token with the given scp and aud.
+func (f *fakeIDP) accessTokenFor(sub string, scp, aud []string) string {
+	return f.sign(map[string]any{"iss": f.srv.URL, "sub": sub, "aud": aud,
+		"iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(), "scp": scp})
+}
+
 func (f *fakeIDP) token(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -141,6 +149,14 @@ func (f *fakeIDP) userinfo(w http.ResponseWriter, r *http.Request) {
 	// Decode the subject out of the JWT payload (already signature-checked by
 	// the client path in the tests that matter).
 	parts := splitDots(tok[7:])
+	f.mu.Lock()
+	oc, isOpaque := f.opaque[tok[7:]]
+	f.mu.Unlock()
+	if isOpaque {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(oc)
+		return
+	}
 	if len(parts) != 3 {
 		http.Error(w, "opaque tokens are not known to the fake", 401)
 		return

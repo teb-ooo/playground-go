@@ -16,7 +16,7 @@ import (
 func newAuthWith(t *testing.T, e *env, v auth.TokenVerifier) *auth.Auth {
 	t.Helper()
 	a, err := auth.New(auth.OIDCConfig{Issuer: e.idp.srv.URL, ClientID: "app", PublicURL: "https://app.example"}, testKey,
-		auth.WithRateLimit(ratelimit.Options{Burst: 1000, Requests: 1000}), auth.WithTokenVerifier(v))
+		auth.WithRateLimit(ratelimit.Options{Burst: 1000, Requests: 1000}), auth.WithAppName("app"), auth.WithKeyVerifier(v))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,11 +45,11 @@ func TestTokenVerifier(t *testing.T) {
 	v := func(r *http.Request, tok string) (auth.User, bool, error) {
 		calls = append(calls, tok)
 		switch tok {
-		case "pat_good":
+		case "pk_good":
 			return auth.User{Subject: "u-pat", Email: "p@x", Username: "pat"}, true, nil
-		case "pat_limited":
+		case "pk_limited":
 			return auth.User{}, false, &auth.RateLimitedError{RetryAfter: 1500 * time.Millisecond}
-		case "pat_broken":
+		case "pk_broken":
 			return auth.User{}, false, errors.New("db down")
 		}
 		return auth.User{}, false, nil
@@ -62,10 +62,10 @@ func TestTokenVerifier(t *testing.T) {
 		wantCode int // BearerOrSession; 0 = passed through
 		wantRA   string
 	}{
-		{"valid", "pat_good", 0, ""},
-		{"unknown", "pat_nope", 401, ""},
-		{"rate limited", "pat_limited", 429, "2"},
-		{"backend failure", "pat_broken", 503, ""},
+		{"valid", "pk_good", 0, ""},
+		{"unknown", "pk_nope", 401, ""},
+		{"rate limited", "pk_limited", 429, "2"},
+		{"backend failure", "pk_broken", 503, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestTokenVerifier(t *testing.T) {
 			r.Header.Set("Authorization", "Bearer "+tc.tok)
 			h.ServeHTTP(w, r)
 			if tc.wantCode == 0 {
-				if !s.hit || !s.ok || s.user.Subject != "u-pat" || s.cred != auth.CredentialToken || s.user.IsAdmin() {
+				if !s.hit || !s.ok || s.user.Subject != "u-pat" || s.cred != auth.CredentialKey || s.user.IsAdmin() {
 					t.Fatalf("seen = %+v", s)
 				}
 				return
@@ -95,7 +95,7 @@ func TestTokenVerifier(t *testing.T) {
 	t.Run("middleware stays anonymous on failure", func(t *testing.T) {
 		h, s := probe(a.Middleware)
 		r := httptest.NewRequest("GET", "/x", nil)
-		r.Header.Set("Authorization", "Bearer pat_nope")
+		r.Header.Set("Authorization", "Bearer pk_nope")
 		h.ServeHTTP(httptest.NewRecorder(), r)
 		if !s.hit || s.ok {
 			t.Fatalf("seen = %+v", s)
@@ -106,7 +106,7 @@ func TestTokenVerifier(t *testing.T) {
 		calls = nil
 		h, s := probe(a.BearerOrSession)
 		r := httptest.NewRequest("GET", "/x", nil)
-		r.Header.Set("Authorization", "Bearer "+e.idp.accessToken("user-1", time.Now().Add(time.Hour)))
+		r.Header.Set("Authorization", "Bearer "+e.idp.accessTokenFor("user-1", []string{"openid", "app:read"}, nil))
 		h.ServeHTTP(httptest.NewRecorder(), r)
 		if !s.ok || s.user.Subject != "user-1" || !s.user.IsAdmin() || s.cred != auth.CredentialBearer || len(calls) != 0 {
 			t.Fatalf("seen = %+v calls=%v", s, calls)
@@ -121,18 +121,18 @@ func TestTokenVerifier(t *testing.T) {
 		h, s := probe(a.BearerOrSession)
 		r := httptest.NewRequest("GET", "/x", nil)
 		r.AddCookie(c)
-		r.Header.Set("Authorization", "Bearer pat_nope")
+		r.Header.Set("Authorization", "Bearer pk_nope")
 		h.ServeHTTP(httptest.NewRecorder(), r)
 		if !s.ok || s.user.Subject != "cookie-user" || s.cred != auth.CredentialSession {
 			t.Fatalf("seen = %+v", s)
 		}
 	})
 
-	t.Run("without a verifier a pat_ token is an invalid bearer", func(t *testing.T) {
+	t.Run("without a verifier a pk_ token is an invalid bearer", func(t *testing.T) {
 		h, s := probe(e.auth.BearerOrSession)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("GET", "/x", nil)
-		r.Header.Set("Authorization", "Bearer pat_good")
+		r.Header.Set("Authorization", "Bearer pk_good")
 		h.ServeHTTP(w, r)
 		if s.hit || w.Code != 401 {
 			t.Fatalf("code=%d hit=%v", w.Code, s.hit)
@@ -153,8 +153,8 @@ func TestRequireSession(t *testing.T) {
 		want int
 	}{
 		{"cookie", "", true, 200},
-		{"pat", "Bearer pat_x", false, 403},
-		{"oidc bearer", "Bearer " + e.idp.accessToken("user-1", time.Now().Add(time.Hour)), false, 403},
+		{"key", "Bearer pk_x", false, 403},
+		{"oidc bearer", "Bearer " + e.idp.accessTokenFor("user-1", []string{"openid", "app:read"}, nil), false, 403},
 		{"nobody", "", false, 401},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -43,12 +43,11 @@ var errNoApp = errors.New("auth: WithAppName is required with WithKeyVerifier")
 //   - CredentialSession (browser): never restricted.
 //   - CredentialKey (platform API key): always restricted to User.Scopes
 //     (a key with no scopes can do nothing). Admin does not bypass this.
-//   - CredentialBearer (OIDC access token): restricted only when the token
-//     carries app scopes (an scp or scope claim with entries of the form
-//     "<app>:read|write|admin"); a token with only openid/email/profile style
-//     scopes, or none, is unrestricted as before.
-//   - CredentialToken (a token verifier plugged in with WithTokenVerifier): restricted only when
-//     the verifier returned Scopes.
+//   - CredentialBearer (OIDC access token): restricted when the token carries
+//     app scopes (an scp or scope claim with entries of the form
+//     "<app>:read|write|admin"). A token without any scope for this app is
+//     refused before it gets here (401) unless aud names this app; such a
+//     token has no scopes and is unrestricted.
 //
 // An administrator needs both the admin group (from the identity, or the key's
 // groups claim) and the "<app>:admin" scope for an admin operation reached
@@ -89,7 +88,7 @@ func ScopesEnforced(ctx context.Context) bool {
 	switch CredentialFromContext(ctx) {
 	case CredentialKey:
 		return true
-	case CredentialBearer, CredentialToken:
+	case CredentialBearer:
 		return u.Scopes != nil
 	}
 	return false

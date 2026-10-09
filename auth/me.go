@@ -73,5 +73,5 @@ func AddSecuritySchemes(o *huma.OpenAPI) {
 	o.Components.SecuritySchemes["session"] = &huma.SecurityScheme{Type: "apiKey", In: "cookie", Name: CookieName,
 		Description: "Session cookie set by /auth/callback."}
 	o.Components.SecuritySchemes["bearer"] = &huma.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT",
-		Description: "Access token issued by the identity service, or a personal access token (pat_...) created from the app's settings."}
+		Description: "Access token issued by the identity service (it must carry a scope for this app), or a platform API key (pk_...)."}
 }

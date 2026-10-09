@@ -11,7 +11,7 @@ import (
 
 func TestAgentFromContext(t *testing.T) {
 	e := newEnv(t)
-	// Every verifier claims an agent; only the key credential may keep it.
+	// The verifier claims an agent; only the key credential may keep it.
 	mk := func(sub string) auth.TokenVerifier {
 		return func(_ *http.Request, tok string) (auth.User, bool, error) {
 			return auth.User{Subject: sub, Agent: "bd"}, true, nil
@@ -19,7 +19,7 @@ func TestAgentFromContext(t *testing.T) {
 	}
 	a, err := auth.New(auth.OIDCConfig{Issuer: e.idp.srv.URL, ClientID: "app", PublicURL: "https://app.example"}, testKey,
 		auth.WithRateLimit(ratelimit.Options{Burst: 1000, Requests: 1000}),
-		auth.WithAppName("app"), auth.WithKeyVerifier(mk("k")), auth.WithTokenVerifier(mk("p")))
+		auth.WithAppName("app"), auth.WithKeyVerifier(mk("k")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,9 +41,10 @@ func TestAgentFromContext(t *testing.T) {
 	if user.Subject != "k" || user.Agent != "bd" || agent != "bd" {
 		t.Fatalf("key: %+v %q", user, agent)
 	}
-	do("pat_x")
-	if user.Subject != "p" || user.Agent != "" || agent != "" {
-		t.Fatalf("token: %+v %q", user, agent)
+	// A bearer token never keeps an agent claim.
+	do(e.idp.accessTokenFor("user-1", []string{"app:read"}, nil))
+	if user.Subject != "user-1" || user.Agent != "" || agent != "" {
+		t.Fatalf("bearer: %+v %q", user, agent)
 	}
 	do("")
 	if user.Agent != "" || agent != "" {

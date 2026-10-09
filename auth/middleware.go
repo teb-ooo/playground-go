@@ -38,13 +38,6 @@ func (a *Auth) identify(r *http.Request) (u User, cred Credential, rej *rejectio
 			} else {
 				rej = rj
 			}
-		case a.tokenVerifier != nil && strings.HasPrefix(tok, PATPrefix):
-			// A personal access token is never handed to the OIDC path.
-			if tu, rj := a.runVerifier(a.tokenVerifier, r, tok); rj == nil {
-				return tu, CredentialToken, nil
-			} else {
-				rej = rj
-			}
 		default:
 			if bu, err := a.verifyBearer(r.Context(), tok); err == nil {
 				return bu, CredentialBearer, nil
@@ -120,14 +113,14 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 }
 
 // BearerOrSession is Middleware for the API and MCP dispatch: it accepts the
-// session cookie, a bearer token validated against the issuer's JWKS, or (see
-// WithTokenVerifier) a personal access token. It differs from Middleware in
+// session cookie, a bearer token validated against the issuer's JWKS, or a
+// platform API key (see WithKeyVerifier). It differs from Middleware in
 // one respect: a bearer token that was presented but is invalid (and no valid
 // session cookie alongside) is answered with 401 and a WWW-Authenticate
 // header instead of being silently treated as anonymous, so API clients learn
-// that their token is bad. A personal access token that cannot be checked is
-// answered with 503, and one from a client that keeps presenting unknown
-// tokens with 429 and Retry-After.
+// that their token is bad. A key that cannot be checked is answered with 503,
+// and one from a client that keeps presenting unknown keys with 429 and
+// Retry-After.
 func (a *Auth) BearerOrSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, cred, rej := a.identify(r)
