@@ -2,6 +2,8 @@
 
 playground-go is the shared Go library every playground app is built on: it turns a Huma API into an MCP server, signs users in through the playground's OIDC issuer, and provides health, logging, rate limiting, mail, SPA serving and test helpers. Apps import its packages and never reimplement them, so behaviour is identical everywhere. The module path is `github.com/teb-ooo/playground-go`.
 
+What changed in each version, and what an app must do when upgrading, is in [CHANGELOG.md](CHANGELOG.md). Tags are annotated and cut by `bin/release-playground-go` in the playground repository, which runs `go vet` and `go test -race` first.
+
 ## Tests
 
 ```bash
