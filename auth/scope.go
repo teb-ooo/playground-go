@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	playgroundlog "github.com/teb-ooo/playground-go/log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -178,6 +179,7 @@ func ScopeMiddleware(api huma.API, app string) {
 			return
 		}
 		scope, secured := OperationScope(op.Method, op)
+		playgroundlog.Annotate(ctx.Context(), playgroundlog.Fields{Op: op.OperationID})
 		c := WithApp(ctx.Context(), app)
 		if secured && ScopesEnforced(c) {
 			if need := QualifyScope(app, scope); !userHas(c, need) {

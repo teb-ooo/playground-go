@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	playgroundlog "github.com/teb-ooo/playground-go/log"
 	"github.com/teb-ooo/playground-go/surface"
 )
 
@@ -89,6 +90,7 @@ func (a *Auth) identified(r *http.Request, u User, cred Credential) *http.Reques
 			ctx = surface.With(ctx, surface.Key)
 		}
 	}
+	playgroundlog.Annotate(ctx, playgroundlog.Fields{User: u.Subject, Credential: string(cred), Surface: surface.From(ctx).String()})
 	return r.WithContext(ctx)
 }
 

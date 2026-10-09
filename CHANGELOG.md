@@ -2,6 +2,18 @@
 
 One entry per tag, newest first. "Upgrade" says what an app must do; "none" means a `go get` is enough. A new tag is annotated and its message is its entry here. Library features that pair with a `@teb-ooo/ui` version say which.
 
+## v0.24.0 (2026-10-09)
+- BREAKING (auth): a bearer token (JWT or opaque) is accepted only if it carries a scope `<app>:read|write|admin` for this app or names the app in `aud`; otherwise 401 `invalid_token`. A token with only `openid`, `email` or `profile` is refused, so an app's own sign-in access token no longer works as an API credential. Platform keys (`pk_`) and sessions are unchanged; apps without an app name (`WithAppName`) are unchanged.
+- BREAKING (auth): `PATPrefix`, `WithTokenVerifier`, `CredentialToken` and the `pat_` texts are removed (the personal access tokens left with `apitoken` in v0.9.0). Platform keys (`WithKeyVerifier`) are the only token verifier.
+- auth: OIDC discovery no longer blocks every caller on one lock (single in-flight discovery, a 5 s negative cache after a failure). New `Auth.Close` and `auth.OnClose`; `Config.NewAuth` registers the keys verifier, so `defer a.Close()` stops its poller.
+- log: an MCP tool call leaves one info line (`op`, `status`, `duration_ms`, `user`, `credential`, `surface=mcp`, `request_id`). The request line carries `user`, `credential`, `surface` and `op` once the caller is identified (`log.Annotate`, `log.Fields`). No app code change needed.
+- openapimcp: a tool call inherits the caller's identity from the outer request instead of verifying the credential again, and the inner request keeps the outer client IP and `X-Forwarded-For`, so per-IP limits see the real client.
+- ParityCheck now fails on an `x-scope` other than read, write or admin, on a `WithExempt` id that matches no operation, and on a non-bool `x-require-user-interaction` or `x-mcp`.
+- apierr: new `WriteProblem` and `Internal`; apps can delete their copies of `writeProblem` and `internalError`.
+- live: `Relay`, `SSEUpstream` and the other relay types are removed (no app used them; bd keeps its own stream).
+- Config: `LogValue` logs `app_owner` and `playground_domain`; the direct `jackc/pgx/v5` requirement is gone.
+- Upgrade: rb replaces its `auth.CredentialToken` comparison (`c.Owner = u.IsAdmin() && c.Cred != auth.CredentialKey`), lore likewise (`return c == auth.CredentialKey || c == auth.CredentialBearer`); every app wraps its top handler with `surface.Middleware` (outermost) as the template does; an app that called its own sign-in access token as an API credential must use a platform key.
+
 ## v0.23.0 (2026-10-08)
 - surface: the `Assistant` surface is removed (no app has an in-app assistant).
 - Upgrade: replace any use of `surface.Assistant` (no known app uses it).
