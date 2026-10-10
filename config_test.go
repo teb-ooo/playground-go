@@ -161,6 +161,32 @@ func TestLogValueRedactsSecrets(t *testing.T) {
 	}
 }
 
+func TestLogValueHasNoDuplicateKeys(t *testing.T) {
+	c := playground.Config{
+		AppName: "hello", AppOwner: "owner@example.com", PlaygroundDomain: "teb.example",
+		Env: "staging", Port: "8080", Version: "v0.0.0-test",
+	}
+	v := c.LogValue().Resolve()
+	if v.Kind() != slog.KindGroup {
+		t.Fatalf("LogValue kind = %v, want group", v.Kind())
+	}
+	seen := map[string]string{}
+	for _, a := range v.Group() {
+		if _, dup := seen[a.Key]; dup {
+			t.Errorf("attribute %q appears more than once", a.Key)
+		}
+		seen[a.Key] = a.Value.String()
+	}
+	for key, want := range map[string]string{"app_owner": "owner@example.com", "playground_domain": "teb.example"} {
+		got, ok := seen[key]
+		if !ok {
+			t.Errorf("attribute %q is missing", key)
+		} else if got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestNewAuthAcceptsPlatformKeysByDefault(t *testing.T) {
 	c, err := playground.FromEnv(env(map[string]string{"PLAYGROUND_DOMAIN": "keys.invalid"}))
 	if err != nil {

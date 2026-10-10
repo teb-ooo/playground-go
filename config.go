@@ -264,7 +264,6 @@ func (c Config) LogValue() slog.Value {
 		slog.String("oidc_client_id", c.OIDC.ClientID), slog.String("oidc_client_secret", set(c.OIDC.ClientSecret)),
 		slog.String("session_key", set(string(c.SessionKey))), slog.String("database_url", set(c.DatabaseURL)),
 		slog.String("mail_provider", c.Mail.Provider),
-		slog.String("app_owner", c.AppOwner), slog.String("playground_domain", c.PlaygroundDomain),
 		slog.String("version", c.Version),
 	)
 }

@@ -2,6 +2,10 @@
 
 One entry per tag, newest first. "Upgrade" says what an app must do; "none" means a `go get` is enough. A new tag is annotated and its message is its entry here. Library features that pair with a `@teb-ooo/ui` version say which.
 
+## v0.24.1 (2026-10-10)
+- Config: `LogValue` no longer emits `app_owner` and `playground_domain` twice (v0.24.0 logged both fields two times in the config group, so a JSON reader kept one copy at random).
+- Upgrade: none.
+
 ## v0.24.0 (2026-10-09)
 - BREAKING (auth): a bearer token (JWT or opaque) is accepted only if it carries a scope `<app>:read|write|admin` for this app or names the app in `aud`; otherwise 401 `invalid_token`. A token with only `openid`, `email` or `profile` is refused, so an app's own sign-in access token no longer works as an API credential. Platform keys (`pk_`) and sessions are unchanged; apps without an app name (`WithAppName`) are unchanged.
 - BREAKING (auth): `PATPrefix`, `WithTokenVerifier`, `CredentialToken` and the `pat_` texts are removed (the personal access tokens left with `apitoken` in v0.9.0). Platform keys (`WithKeyVerifier`) are the only token verifier.
