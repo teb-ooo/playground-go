@@ -781,3 +781,45 @@ func TestEntranceReceivesSignInProblems(t *testing.T) {
 		t.Errorf("unreachable issuer: %d %q", w.Code, w.Header().Get("Location"))
 	}
 }
+
+func TestTheOwnerOfASessionIsAnAdministrator(t *testing.T) {
+	for _, tc := range []struct {
+		name, owner string
+		groups      []string
+		want        bool
+	}{
+		{"no owner set", "", nil, false},
+		{"someone else owns the app", "someone@else.co", nil, false},
+		{"the owner, any case", " ADA@teb.OOO ", nil, true},
+		{"the owner who is already an admin", "ada@teb.ooo", []string{"admin"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, err := auth.New(auth.OIDCConfig{Issuer: "https://oidc.example", ClientID: "c", PublicURL: "https://app.example"}, bytes.Repeat([]byte{1}, 32), auth.WithOwner(tc.owner))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got, count int
+			h := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				u, _ := auth.FromContext(r.Context())
+				if u.IsAdmin() {
+					got = 1
+				}
+				for _, g := range u.Groups {
+					if g == auth.AdminGroup {
+						count++
+					}
+				}
+			}))
+			cookie, err := testkit.MintSession(bytes.Repeat([]byte{1}, 32), auth.User{Subject: "u", Email: "ada@teb.ooo", Groups: tc.groups})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest("GET", "/x", nil)
+			r.AddCookie(cookie)
+			h.ServeHTTP(httptest.NewRecorder(), r)
+			if (got == 1) != tc.want || count > 1 {
+				t.Fatalf("admin=%v want %v, admin group %d times", got == 1, tc.want, count)
+			}
+		})
+	}
+}

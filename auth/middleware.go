@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -84,6 +85,9 @@ func (a *Auth) identified(r *http.Request, u User, cred Credential) *http.Reques
 	if cred != CredentialKey {
 		u.Agent = "" // only a signed key claim can name an agent
 	}
+	if cred == CredentialSession && a.isOwner(u.Email) && !u.IsAdmin() {
+		u.Groups = append(slices.Clone(u.Groups), AdminGroup) // the app owner is an administrator (rule API-qig)
+	}
 	ctx := WithApp(WithCredential(WithUser(r.Context(), u), cred), a.appName)
 	if cred == CredentialKey {
 		if s := surface.From(ctx); !s.IsAI() {
@@ -92,6 +96,11 @@ func (a *Auth) identified(r *http.Request, u User, cred Credential) *http.Reques
 	}
 	playgroundlog.Annotate(ctx, playgroundlog.Fields{User: u.Subject, Credential: string(cred), Surface: surface.From(ctx).String()})
 	return r.WithContext(ctx)
+}
+
+// isOwner reports whether email is the app owner (WithOwner), compared case-insensitively; false when no owner is set.
+func (a *Auth) isOwner(email string) bool {
+	return a.owner != "" && strings.EqualFold(strings.TrimSpace(email), a.owner)
 }
 
 func retrySeconds(e *RateLimitedError) int {

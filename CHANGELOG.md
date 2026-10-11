@@ -2,6 +2,10 @@
 
 One entry per tag, newest first. "Upgrade" says what an app must do; "none" means a `go get` is enough. A new tag is annotated and its message is its entry here. Library features that pair with a `@teb-ooo/ui` version say which.
 
+## v0.25.0 (2026-10-11)
+- auth: when `WithOwner` (APP_OWNER) is set, a signed-in session whose email equals it (case-insensitive) is an administrator: `User.IsAdmin()` is true and `groups` carries `admin` (once). Keys and bearer tokens are unchanged. `is_owner` stays. Apps that already let the owner through next to `IsAdmin()` can drop that extra check.
+- Upgrade: none (`go get`); an app that mounts `auth.WithOwner(cfg.AppOwner)` gets it.
+
 ## v0.24.1 (2026-10-10)
 - Config: `LogValue` no longer emits `app_owner` and `playground_domain` twice (v0.24.0 logged both fields two times in the config group, so a JSON reader kept one copy at random).
 - Upgrade: none.
