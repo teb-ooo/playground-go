@@ -823,3 +823,54 @@ func TestTheOwnerOfASessionIsAnAdministrator(t *testing.T) {
 		})
 	}
 }
+
+func TestSharedStagingAccount(t *testing.T) {
+	e := newEnv(t)
+	t.Run("off: login goes to the identity service", func(t *testing.T) {
+		w := e.do("GET", "/auth/login?next=/x", nil, nil)
+		if w.Code != http.StatusFound || !strings.HasPrefix(w.Header().Get("Location"), e.idp.srv.URL) || cookieNamed(w, auth.CookieName) != nil {
+			t.Fatalf("%d %s", w.Code, w.Header().Get("Location"))
+		}
+	})
+	for name, env := range map[string]map[string]string{
+		"production with the flag": {"APP_ENV": "production", "STAGING_SHARED_ACCOUNT": "1"},
+		"staging without the flag": {"APP_ENV": "staging", "STAGING_SHARED_ACCOUNT": ""},
+		"empty APP_ENV":            {"APP_ENV": "", "STAGING_SHARED_ACCOUNT": "1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for k, v := range env {
+				t.Setenv(k, v)
+			}
+			w := e.do("GET", "/auth/login", nil, nil)
+			if !strings.HasPrefix(w.Header().Get("Location"), e.idp.srv.URL) || cookieNamed(w, auth.CookieName) != nil {
+				t.Fatalf("signed in as the shared account where it must not: %d %s", w.Code, w.Header().Get("Location"))
+			}
+		})
+	}
+	t.Run("staging with the flag", func(t *testing.T) {
+		t.Setenv("APP_ENV", "staging")
+		t.Setenv("STAGING_SHARED_ACCOUNT", "1")
+		w := e.do("GET", "/auth/login?next=/worlds", nil, nil)
+		c := cookieNamed(w, auth.CookieName)
+		if w.Code != http.StatusFound || w.Header().Get("Location") != "/worlds" || c == nil {
+			t.Fatalf("%d %s %v", w.Code, w.Header().Get("Location"), c)
+		}
+		// the session is the shared account, an administrator, and the same one the agent mints
+		w = e.do("GET", "/api/x", []*http.Cookie{c}, nil)
+		if w.Code != 200 || strings.TrimSpace(w.Body.String()) == "" || !strings.Contains(w.Body.String(), auth.StagingSubject) {
+			t.Fatalf("api with the staging session: %d %s", w.Code, w.Body)
+		}
+		if u := testkit.StagingUser(); u.Subject != auth.StagingSubject || !u.IsAdmin() || !strings.HasSuffix(u.Email, ".invalid") {
+			t.Fatalf("StagingUser = %+v", u)
+		}
+		// an open redirect is not offered
+		if w := e.do("GET", "/auth/login?next=//evil.example", nil, nil); w.Header().Get("Location") != "/" {
+			t.Errorf("next not sanitised: %s", w.Header().Get("Location"))
+		}
+		// the identity service sign-in stays available
+		w = e.do("GET", "/auth/login?account=real", nil, nil)
+		if !strings.HasPrefix(w.Header().Get("Location"), e.idp.srv.URL) || cookieNamed(w, auth.CookieName) != nil {
+			t.Errorf("account=real: %d %s", w.Code, w.Header().Get("Location"))
+		}
+	})
+}

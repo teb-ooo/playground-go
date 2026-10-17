@@ -45,3 +45,7 @@ func CookieHeader(c *http.Cookie) string { return c.Name + "=" + c.Value }
 // SetCookieString returns the cookie as a Set-Cookie header value
 // (attributes included), the form `agent-browser cookie set` takes.
 func SetCookieString(c *http.Cookie) string { return c.String() }
+
+// StagingUser is the shared staging account (auth.StagingUser): the user an agent mints its staging session with, so that it and the owner,
+// whose /auth/login signs in as the same account, see the same pages. Mint it with MintSession(sessionKey, testkit.StagingUser()).
+func StagingUser() auth.User { return auth.StagingUser() }

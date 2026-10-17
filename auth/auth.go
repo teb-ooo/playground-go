@@ -288,6 +288,9 @@ func sanitizeNext(next string) string {
 }
 
 func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if stagingAccountOn() && r.URL.Query().Get("account") != "real" && a.signInAsStagingAccount(w, r) {
+		return
+	}
 	p, err := a.getProvider(r.Context())
 	if err != nil {
 		a.fail(w, r, http.StatusBadGateway, ProblemUnavailable, "Identity service unavailable", "The sign-in service could not be reached. Try again shortly.")
